@@ -9,6 +9,9 @@
 #define TFT_DC 14
 #define TFT_CS 12
 
+#define MAX_BMP_LINE_LENGTH 320u
+#define CONVERT_888RGB_TO_565BGR(b, g, r) ((r >> 3) | ((g >> 2) << 5) | ((b >> 3) << 11))
+
 /** Private type definitions **/
 
 #pragma pack(push)  // save the original data alignment
@@ -35,12 +38,18 @@ typedef struct {
 
 /** Private function forward declarations **/
 
-void loadBmp(char * path);
+void loadBmp(char * path, uint16_t * output_buffer);
 
 /** Private variable declarations **/
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 bool isInitComplete = false;
 char str_buffer[128];
+
+uint16_t test_buffer[40*40];
+uint8_t  bmp_line_buffer[(MAX_BMP_LINE_LENGTH * 3) + 4u];
+//static uint16_t frame_buffer[320*240]; //Cannot get this much contiguous memory.
+static uint16_t frame_buffer1[320*120];
+//static uint16_t frame_buffer2[320*120];
 
 /** Public functions **/
 void setup() 
@@ -61,13 +70,17 @@ void setup()
     Serial.println("OK!");
   }
 
-  loadBmp("/ghost.bmp");
-
-  //Lets try messing with the display
   tft.begin();
+  tft.setRotation(1);
+
   tft.fillScreen(ILI9341_BLUE);
-  
-  delay(1000);                      // wait for a second
+
+  loadBmp("/logo_upper.bmp", frame_buffer1);
+  tft.drawRGBBitmap(0,0,frame_buffer1,320,120);
+
+  loadBmp("/logo_lower.bmp", frame_buffer1);
+  tft.drawRGBBitmap(0,120,frame_buffer1,320,120);
+
   isInitComplete = true;
 }
 
@@ -80,18 +93,18 @@ void loop()
 
   // put your main code here, to run repeatedly:
   digitalWrite(LED_BUILTIN, HIGH);  // turn the LED on (HIGH is the voltage level)
-  tft.fillScreen(ILI9341_RED);
   delay(1000);                      // wait for a second
   digitalWrite(LED_BUILTIN, LOW);   // turn the LED off by making the voltage LOW
-  tft.fillScreen(ILI9341_BLUE);
   delay(1000);                      // wait for a second
-  //Serial.println("blink");
 }
 
-void loadBmp(char * path)
+void loadBmp(char * path, uint16_t * output_buffer)
 {
   File     bmpFile;
   BMPHeader header;
+  uint16_t line_stride;
+  uint16_t line_px_data_len;
+  uint16_t * dest_ptr = output_buffer;
 
   bmpFile = SD.open(path, FILE_READ);
 
@@ -110,4 +123,24 @@ void loadBmp(char * path)
   Serial.println(str_buffer);
   sprintf(str_buffer, "Bitmap height : %d", header.height_px);
   Serial.println(str_buffer);
+
+  /* Now lets try and read RGB data... */
+
+  /* Take padding into account... */
+  line_px_data_len = header.width_px * 3u;
+  line_stride = (line_px_data_len + 3u) & ~0x03;
+
+  for (int y = 0u; y < header.height_px; y++)
+  {
+    //file_res = f_lseek(&priv_f_obj, ((priv_bmp_header.height_px - (y + 1)) * line_stride) + priv_bmp_header.offset);
+    //file_res = f_read(&priv_f_obj, priv_bmp_line_buffer, line_stride, &bytes_read);
+
+    bmpFile.seek(((header.height_px - (y + 1)) * line_stride) + header.offset);
+    bmpFile.readBytes((char *)&bmp_line_buffer, line_stride);
+
+    for (int x = 0u; x < line_px_data_len; x+=3u )
+    {
+      *dest_ptr++ = CONVERT_888RGB_TO_565BGR(bmp_line_buffer[x+2], bmp_line_buffer[x+1], bmp_line_buffer[x]);
+    }
+  }
 }
