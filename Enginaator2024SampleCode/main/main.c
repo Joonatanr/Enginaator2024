@@ -20,6 +20,9 @@
 #define PIN_NUM_CLK   18
 #define PIN_NUM_CS    4
 
+#define MAX_BMP_LINE_LENGTH 320u
+#define CONVERT_888RGB_TO_565BGR(b, g, r) ((r >> 3) | ((g >> 2) << 5) | ((b >> 3) << 11))
+
 /* Private type definitions */
 #pragma pack(push)  // save the original data alignment
 #pragma pack(1)     // Set data alignment to 1 byte boundary
@@ -50,12 +53,15 @@ void timer_callback_10msec(void *param);
 static void blink_led(void);
 
 static void sdCard_init(void);
-static esp_err_t read_bmp_file(const char *path);
+static esp_err_t read_bmp_file(const char *path, uint16_t * output_buffer);
 
 /* Private variables */
 volatile bool timer_flag = false;
 static uint16_t timer_counter = 0u;
 static const char *TAG = "SampleCode";
+
+uint8_t  bmp_line_buffer[(MAX_BMP_LINE_LENGTH * 3) + 4u];
+static uint16_t frame_buffer[320*240];
 //static char str_buffer[64];
 
 /* Public functions*/
@@ -193,7 +199,7 @@ static void sdCard_init(void)
 
     /* Lets try to load a bitmap. */
     const char *file_logo = MOUNT_POINT"/logo.bmp";
-    ret = read_bmp_file(file_logo);
+    ret = read_bmp_file(file_logo, frame_buffer);
     if (ret != ESP_OK)
     {
         return;
@@ -209,10 +215,13 @@ static void sdCard_init(void)
 }
 
 
-static esp_err_t read_bmp_file(const char *path)
+static esp_err_t read_bmp_file(const char *path, uint16_t * output_buffer)
 {
 	BMPHeader header;
 	FILE *f;
+	uint16_t line_stride;
+	uint16_t line_px_data_len;
+	uint16_t * dest_ptr = output_buffer;
 
 	ESP_LOGI(TAG, "Reading file %s", path);
     f = fopen(path, "r");
@@ -227,6 +236,21 @@ static esp_err_t read_bmp_file(const char *path)
 
     ESP_LOGE(TAG, "Bitmap width : %ld", header.width_px);
     ESP_LOGE(TAG, "Bitmap height : %ld", header.height_px);
+
+    /* Take padding into account... */
+    line_px_data_len = header.width_px * 3u;
+    line_stride = (line_px_data_len + 3u) & ~0x03;
+
+    for (int y = 0u; y < header.height_px; y++)
+    {
+    	fseek(f, ((header.height_px - (y + 1)) * line_stride) + header.offset, SEEK_SET);
+    	fread(bmp_line_buffer, sizeof(uint8_t), line_stride, f);
+
+      for (int x = 0u; x < line_px_data_len; x+=3u )
+      {
+        *dest_ptr++ = CONVERT_888RGB_TO_565BGR(bmp_line_buffer[x+2], bmp_line_buffer[x+1], bmp_line_buffer[x]);
+      }
+    }
 
     fclose(f);
 
