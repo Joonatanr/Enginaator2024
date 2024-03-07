@@ -5,8 +5,9 @@
 
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
-
 #include "esp_vfs_fat.h"
+
+#include "display.h"
 
 /* Private defines */
 
@@ -74,6 +75,9 @@ void app_main(void)
 	configure_timer();
 
 	sdCard_init();
+
+	/* Initialize the main display. */
+	display_init();
 
     while (1)
     {
