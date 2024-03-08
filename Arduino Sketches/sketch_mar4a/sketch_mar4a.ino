@@ -9,6 +9,8 @@
 #define TFT_DC 14
 #define TFT_CS 12
 
+#define TFT_RESET 22
+
 #define MAX_BMP_LINE_LENGTH 320u
 #define CONVERT_888RGB_TO_565BGR(b, g, r) ((r >> 3) | ((g >> 2) << 5) | ((b >> 3) << 11))
 
@@ -58,6 +60,9 @@ void setup()
   
   // put your setup code here, to run once:
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(TFT_RESET, OUTPUT);
+  digitalWrite(TFT_RESET, HIGH);
+
   Serial.begin(115200);
 
   Serial.print("Initializing SD card...");

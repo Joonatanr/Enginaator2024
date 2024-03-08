@@ -21,8 +21,6 @@
 #define PIN_NUM_CLK   18
 #define PIN_NUM_CS    4
 
-#define MAX_BMP_LINE_LENGTH 320u
-#define CONVERT_888RGB_TO_565BGR(b, g, r) ((r >> 3) | ((g >> 2) << 5) | ((b >> 3) << 11))
 
 /* Private type definitions */
 #pragma pack(push)  // save the original data alignment
@@ -62,7 +60,7 @@ static uint16_t timer_counter = 0u;
 static const char *TAG = "SampleCode";
 
 uint8_t  bmp_line_buffer[(MAX_BMP_LINE_LENGTH * 3) + 4u];
-static uint16_t frame_buffer[320*240];
+static uint16_t priv_frame_buffer[320*240];
 //static char str_buffer[64];
 
 /* Public functions*/
@@ -78,6 +76,10 @@ void app_main(void)
 
 	/* Initialize the main display. */
 	display_init();
+
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+	display_test_image(priv_frame_buffer);
 
     while (1)
     {
@@ -202,8 +204,8 @@ static void sdCard_init(void)
     ESP_LOGI(TAG, "Filesystem mounted");
 
     /* Lets try to load a bitmap. */
-    const char *file_logo = MOUNT_POINT"/logo.bmp";
-    ret = read_bmp_file(file_logo, frame_buffer);
+    const char *file_logo = MOUNT_POINT"/test.bmp";
+    ret = read_bmp_file(file_logo, priv_frame_buffer);
     if (ret != ESP_OK)
     {
         return;
@@ -252,7 +254,7 @@ static esp_err_t read_bmp_file(const char *path, uint16_t * output_buffer)
 
       for (int x = 0u; x < line_px_data_len; x+=3u )
       {
-        *dest_ptr++ = CONVERT_888RGB_TO_565BGR(bmp_line_buffer[x+2], bmp_line_buffer[x+1], bmp_line_buffer[x]);
+        *dest_ptr++ = CONVERT_888RGB_TO_565RGB(bmp_line_buffer[x + 2], bmp_line_buffer[x+1], bmp_line_buffer[x]);
       }
     }
 
