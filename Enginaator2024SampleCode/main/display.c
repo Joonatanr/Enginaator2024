@@ -17,16 +17,30 @@
 
 #include "display.h"
 
-#define LCD_HOST    VSPI_HOST
+#define LCD_HOST    SPI2_HOST
 
-#define PIN_NUM_MISO  19
-#define PIN_NUM_MOSI  23
-#define PIN_NUM_CLK   18
-
-#define PIN_NUM_CS   	12
-#define PIN_NUM_DC   	14
+#if 0
+#define PIN_NUM_MISO  	19
+#define PIN_NUM_MOSI  	23
+#define PIN_NUM_CLK   	18
+#define PIN_NUM_CS  	4
+#define PIN_NUM_DC    	14
 #define PIN_NUM_RST  	22
 #define PIN_NUM_BCKL 	5
+#else
+/* For the S3 board: */
+#define PIN_NUM_CLK   	12
+#define PIN_NUM_MOSI  	11
+#define PIN_NUM_MISO  	13
+
+#define PIN_NUM_DC         5
+#define PIN_NUM_RST        3
+#define PIN_NUM_CS         4
+#define PIN_NUM_BCKL       2
+#endif
+
+
+
 
 /* Private type definitions */
 typedef struct

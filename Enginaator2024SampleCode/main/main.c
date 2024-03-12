@@ -11,16 +11,23 @@
 
 /* Private defines */
 
-#define BLINK_GPIO 2u
+#define BLINK_GPIO 48u
 #define CONFIG_BLINK_PERIOD 10u
 
 #define MOUNT_POINT "/sdcard"
 
+#if 0
 #define PIN_NUM_MISO  19
 #define PIN_NUM_MOSI  23
 #define PIN_NUM_CLK   18
 #define PIN_NUM_CS    4
-
+#else
+/* For the S3 board: */
+#define PIN_NUM_CLK   12
+#define PIN_NUM_MOSI  11
+#define PIN_NUM_MISO  13
+#define PIN_NUM_CS    7
+#endif
 
 /* Private type definitions */
 #pragma pack(push)  // save the original data alignment
@@ -80,6 +87,7 @@ void app_main(void)
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	display_test_image(priv_frame_buffer);
+
 
     while (1)
     {
@@ -157,7 +165,7 @@ static void sdCard_init(void)
     // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 20MHz for SDSPI)
     // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-    host.slot = VSPI_HOST;
+    host.slot = SPI2_HOST;
     host.max_freq_khz = 4000;
 
     spi_bus_config_t bus_cfg =
@@ -170,7 +178,7 @@ static void sdCard_init(void)
         .max_transfer_sz = 4000,
     };
 
-    ret = spi_bus_initialize(host.slot, &bus_cfg, VSPI_HOST);
+    ret = spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize bus.");
