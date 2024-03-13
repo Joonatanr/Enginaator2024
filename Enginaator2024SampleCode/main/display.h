@@ -33,7 +33,7 @@
 #define DISPLAY_MAX_TRANSFER_SIZE PARALLEL_LINES*320*2+8
 //#define DISPLAY_MAX_TRANSFER_SIZE 320u * 240u * sizeof(uint16_t)
 
-extern uint16_t priv_frame_buffer[320*240];
+extern uint16_t priv_frame_buffer[240][320];
 
 void display_init(void);
 void display_test_image(uint16_t *buf);

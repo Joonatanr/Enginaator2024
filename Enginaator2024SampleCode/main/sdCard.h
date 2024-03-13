@@ -9,7 +9,7 @@
 #define MAIN_SDCARD_H_
 
 /* TODO : Placeholder */
-extern uint16_t priv_frame_buffer[320*240];
+extern uint16_t priv_frame_buffer[240][320];
 
 extern void sdCard_init(void);
 extern void sdCard_Read_bmp_file(const char *path, uint16_t * output_buffer);

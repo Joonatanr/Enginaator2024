@@ -115,7 +115,7 @@ void display_init(void)
 
     spi_device_interface_config_t devcfg=
     {
-        .clock_speed_hz=10*1000*1000,           //Clock out at 10 MHz
+        .clock_speed_hz=40*1000*1000,           //Clock out at 10 MHz
         .mode=0,                                //SPI mode 0
         .spics_io_num=PIN_NUM_CS,               //CS pin
         .queue_size=7,                          //We want to be able to queue 7 transactions at a time
@@ -198,6 +198,7 @@ void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
     	wait_line_finish(priv_spi_handle);
     	remainingHeight -=chunkHeight;
     }
+    heap_caps_free(line_data);
 }
 /******************** Private function definitions *********************/
 
@@ -307,6 +308,9 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
 
 	uint16_t end_column = (xPos + width) - 1u;
     uint16_t end_row = (yPos + height) - 1u;
+
+    end_column = MIN(end_column, 320);
+    end_row = MIN(end_row, 240);
 
     if (total_size_bytes > DISPLAY_MAX_TRANSFER_SIZE)
     {

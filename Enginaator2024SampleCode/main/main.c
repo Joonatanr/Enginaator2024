@@ -34,16 +34,16 @@
 static void configure_led(void);
 static void configure_timer(void);
 static void configure_spi(void);
+static void drawRectangleInFrameBuf(int x, int y, int width, int height, uint16_t color);
 
 void timer_callback_10msec(void *param);
-static void blink_led(void);
 
 /* Private variables */
 volatile bool timer_flag = false;
 static uint16_t timer_counter = 0u;
 static const char *TAG = "Main Program";
 
-uint16_t priv_frame_buffer[320*240];
+uint16_t priv_frame_buffer[240][320];
 
 /* Public functions */
 void app_main(void)
@@ -63,9 +63,9 @@ void app_main(void)
 
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-	sdCard_Read_bmp_file("/test.bmp", priv_frame_buffer);
+	sdCard_Read_bmp_file("/test.bmp", &priv_frame_buffer[0][0]);
 
-	display_test_image(priv_frame_buffer);
+	display_test_image(&priv_frame_buffer[0][0]);
 
 	vTaskDelay(500 / portTICK_PERIOD_MS);
 	display_fillRectangle(0, 0, 60, 40, COLOR_RED);
@@ -81,18 +81,71 @@ void app_main(void)
 	vTaskDelay(500 / portTICK_PERIOD_MS);
 	display_fillRectangle(200, 200, 60, 40, COLOR_MAGENTA);
 
-    while (1)
-    {
-        /* Required to prevent watchdog reset. */
-    	vTaskDelay(CONFIG_BLINK_PERIOD / portTICK_PERIOD_MS);
 
-        if (timer_flag)
-        {
-        	blink_led();
-        	timer_flag = false;
-        }
-    }
+	vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+	/* Lets try something dynamic now... */
+	drawRectangleInFrameBuf(0, 0, 320, 240, COLOR_BLUE);
+	drawRectangleInFrameBuf(140, 0, 40, 40, COLOR_RED);
+
+	display_test_image(&priv_frame_buffer[0][0]);
+
+	int yLocation = 0;
+	bool direction = true;
+	int speed = 4;
+
+	while(1)
+	{
+		if(direction)
+		{
+			if(yLocation >= 199u)
+			{
+				yLocation-= speed;
+				direction = false;
+			}
+			else
+			{
+				yLocation+= speed;
+			}
+		}
+		else
+		{
+			if (yLocation <= 0)
+			{
+				yLocation+= speed;
+				direction = true;
+			}
+			else
+			{
+				yLocation-= speed;
+			}
+		}
+
+		/* Draw the whole background */
+		drawRectangleInFrameBuf(0, 0, 320, 240, COLOR_BLUE);
+		/* Draw */
+		drawRectangleInFrameBuf(140, yLocation, 40, 40, COLOR_RED);
+		drawRectangleInFrameBuf(70,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
+		drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
+
+		display_test_image(&priv_frame_buffer[0][0]);
+
+		vTaskDelay(10u / portTICK_PERIOD_MS);
+	}
 }
+
+
+static void drawRectangleInFrameBuf(int xPos, int yPos, int width, int height, uint16_t color)
+{
+	for (int x = xPos; ((x < (xPos+width)) && (x < 320)); x++)
+	{
+		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
+		{
+			priv_frame_buffer[y][x] = color;
+		}
+	}
+}
+
 
 /* Private functions */
 static void configure_led(void)
@@ -149,17 +202,6 @@ static void configure_spi(void)
     }
 }
 
-
-static void blink_led(void)
-{
-	static uint32_t s_led_state = 0u;
-
-	s_led_state = !s_led_state;
-	/* Set the GPIO level according to the state (LOW or HIGH)*/
-    gpio_set_level(BLINK_GPIO, s_led_state);
-
-    //printf("blink\n");
-}
 
 
 void timer_callback_10msec(void *param)
