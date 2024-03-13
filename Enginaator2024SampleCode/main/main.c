@@ -15,18 +15,33 @@
 #define BLINK_GPIO 38u
 #define CONFIG_BLINK_PERIOD 10u
 
+#if 0
+#define PIN_NUM_MISO  19
+#define PIN_NUM_MOSI  23
+#define PIN_NUM_CLK   18
+#define PIN_NUM_CS    4
+#else
+/* For the S3 board: */
+#define PIN_NUM_CLK   12
+#define PIN_NUM_MOSI  11
+#define PIN_NUM_MISO  13
+#endif
+
 /* Private type definitions */
 
 
 /* Private function forward declarations */
 static void configure_led(void);
 static void configure_timer(void);
+static void configure_spi(void);
+
 void timer_callback_10msec(void *param);
 static void blink_led(void);
 
 /* Private variables */
 volatile bool timer_flag = false;
 static uint16_t timer_counter = 0u;
+static const char *TAG = "Main Program";
 
 uint16_t priv_frame_buffer[320*240];
 
@@ -38,6 +53,8 @@ void app_main(void)
 	configure_led();
 
 	configure_timer();
+
+	configure_spi();
 
 	sdCard_init();
 
@@ -86,6 +103,37 @@ static void configure_timer(void)
 	ESP_ERROR_CHECK(esp_timer_create(&my_timer_args, &timer_handler));
 	ESP_ERROR_CHECK(esp_timer_start_periodic(timer_handler, 10000)); /* Set timer to 10000 microseconds, (10ms) */
 }
+
+
+static void configure_spi(void)
+{
+    esp_err_t ret;
+
+    // Use settings defined above to initialize SD card and mount FAT filesystem.
+    // Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.
+    // Please check its source code and implement error recovery when developing
+    // production applications.
+    ESP_LOGI(TAG, "Setting up SPI peripheral");
+
+    spi_bus_config_t bus_cfg =
+    {
+        .mosi_io_num = PIN_NUM_MOSI,
+        .miso_io_num = PIN_NUM_MISO,
+        .sclk_io_num = PIN_NUM_CLK,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = DISPLAY_MAX_TRANSFER_SIZE,
+    };
+
+    ret = spi_bus_initialize(SPI2_HOST, &bus_cfg, SPI_DMA_CH_AUTO);
+
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize bus.");
+        return;
+    }
+}
+
 
 static void blink_led(void)
 {

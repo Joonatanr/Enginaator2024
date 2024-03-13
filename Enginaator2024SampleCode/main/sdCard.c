@@ -13,19 +13,8 @@
 #include "display.h"
 
 #define MOUNT_POINT "/sdcard"
-
-#if 0
-#define PIN_NUM_MISO  19
-#define PIN_NUM_MOSI  23
-#define PIN_NUM_CLK   18
-#define PIN_NUM_CS    4
-#else
-/* For the S3 board: */
-#define PIN_NUM_CLK   12
-#define PIN_NUM_MOSI  11
-#define PIN_NUM_MISO  13
 #define PIN_NUM_CS    7
-#endif
+
 
 /****************** Private type definitions *******************/
 
@@ -57,15 +46,16 @@ typedef struct
 static esp_err_t read_bmp_file(const char *path, uint16_t * output_buffer);
 static const char *TAG = "SD Card Handler";
 
-/**************** Private variable declarations ****************/
+/**************** Private variable declarations ******************/
+
 uint8_t  bmp_line_buffer[(MAX_BMP_LINE_LENGTH * 3) + 4u];
 
 /**************** Public functions  **************/
 void sdCard_init(void)
 {
-    esp_err_t ret;
+	esp_err_t ret;
 
-    // Options for mounting the filesystem.
+	// Options for mounting the filesystem.
     esp_vfs_fat_sdmmc_mount_config_t mount_config =
     {
         .format_if_mount_failed = false,
@@ -75,37 +65,16 @@ void sdCard_init(void)
 
     sdmmc_card_t *card;
     const char mount_point[] = MOUNT_POINT;
-    ESP_LOGI(TAG, "Initializing SD card");
 
-    // Use settings defined above to initialize SD card and mount FAT filesystem.
-    // Note: esp_vfs_fat_sdmmc/sdspi_mount is all-in-one convenience functions.
-    // Please check its source code and implement error recovery when developing
-    // production applications.
-    ESP_LOGI(TAG, "Using SPI peripheral");
+    ESP_LOGI(TAG, "Initializing SD card");
 
     // By default, SD card frequency is initialized to SDMMC_FREQ_DEFAULT (20MHz)
     // For setting a specific frequency, use host.max_freq_khz (range 400kHz - 20MHz for SDSPI)
     // Example: for fixed frequency of 10MHz, use host.max_freq_khz = 10000;
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
     host.slot = SPI2_HOST;
     host.max_freq_khz = 4000;
-
-    spi_bus_config_t bus_cfg =
-    {
-        .mosi_io_num = PIN_NUM_MOSI,
-        .miso_io_num = PIN_NUM_MISO,
-        .sclk_io_num = PIN_NUM_CLK,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4000,
-    };
-
-    ret = spi_bus_initialize(host.slot, &bus_cfg, SPI_DMA_CH_AUTO);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize bus.");
-        return;
-    }
 
     // This initializes the slot without card detect (CD) and write protect (WP) signals.
     // Modify slot_config.gpio_cd and slot_config.gpio_wp if your board has these signals.
@@ -147,7 +116,7 @@ void sdCard_init(void)
     ESP_LOGI(TAG, "Card unmounted");
 
     //deinitialize the bus after all devices are removed
-    spi_bus_free(host.slot);
+    //spi_bus_free(host.slot);
 }
 
 /*********** Private functions ***********/

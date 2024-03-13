@@ -19,27 +19,10 @@
 
 #define LCD_HOST    SPI2_HOST
 
-#if 0
-#define PIN_NUM_MISO  	19
-#define PIN_NUM_MOSI  	23
-#define PIN_NUM_CLK   	18
-#define PIN_NUM_CS  	4
-#define PIN_NUM_DC    	14
-#define PIN_NUM_RST  	22
-#define PIN_NUM_BCKL 	5
-#else
-/* For the S3 board: */
-#define PIN_NUM_CLK   	12
-#define PIN_NUM_MOSI  	11
-#define PIN_NUM_MISO  	13
-
 #define PIN_NUM_DC         5
 #define PIN_NUM_RST        3
 #define PIN_NUM_CS         4
 #define PIN_NUM_BCKL       2
-#endif
-
-
 
 
 /* Private type definitions */
@@ -59,9 +42,7 @@ void lcd_init(spi_device_handle_t spi);
 static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata);
 static void send_line_finish(spi_device_handle_t spi);
 
-//To speed up transfers, every SPI transfer sends a bunch of lines. This define specifies how many. More means more memory use,
-//but less overhead for setting up / finishing transfers. Make sure 240 is dividable by this.
-#define PARALLEL_LINES 16
+
 
 DRAM_ATTR static const lcd_init_cmd_t ili_init_cmds[]=
 {
@@ -132,15 +113,6 @@ void display_init(void)
 {
     esp_err_t ret;
 
-    spi_bus_config_t buscfg =
-    {
-        .miso_io_num=PIN_NUM_MISO,
-        .mosi_io_num=PIN_NUM_MOSI,
-        .sclk_io_num=PIN_NUM_CLK,
-        .quadwp_io_num=-1,
-        .quadhd_io_num=-1,
-        .max_transfer_sz=PARALLEL_LINES*320*2+8
-    };
     spi_device_interface_config_t devcfg=
     {
         .clock_speed_hz=10*1000*1000,           //Clock out at 10 MHz
@@ -152,10 +124,7 @@ void display_init(void)
 
     printf("Initializing SPI bus... \n");
 
-    //Initialize the SPI bus
-    ret=spi_bus_initialize(LCD_HOST, &buscfg, SPI_DMA_CH_AUTO);
-    ESP_ERROR_CHECK(ret);
-    //Attach the LCD to the SPI bus
+    //Attach the LCD to the SPI bus that was initialized in main.c
     ret=spi_bus_add_device(LCD_HOST, &devcfg, &priv_spi_handle);
     ESP_ERROR_CHECK(ret);
 
@@ -164,7 +133,6 @@ void display_init(void)
     //Initialize the LCD
     lcd_init(priv_spi_handle);
     printf("Transmitting test data... \n");
-
 
     /* Create some test data for 16 lines. */
     uint16_t *line_data = heap_caps_malloc(320*PARALLEL_LINES*sizeof(uint16_t), MALLOC_CAP_DMA);
