@@ -67,7 +67,19 @@ void app_main(void)
 
 	display_test_image(priv_frame_buffer);
 
-	vTaskDelay(1000 / portTICK_PERIOD_MS);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(0, 0, 60, 40, COLOR_RED);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(40, 40, 60, 40, COLOR_GREEN);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(80, 80, 60, 40, COLOR_BLUE);
+
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(120, 120, 60, 40, COLOR_CYAN);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(160, 160, 60, 40, COLOR_YELLOW);
+	vTaskDelay(500 / portTICK_PERIOD_MS);
+	display_fillRectangle(200, 200, 60, 40, COLOR_MAGENTA);
 
     while (1)
     {

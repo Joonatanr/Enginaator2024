@@ -176,48 +176,28 @@ void display_test_image(uint16_t *buf)
 /* Lets try a blocking implementation here... */
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-	uint8_t data[16];
+    uint16_t buf_height = MIN(height, PARALLEL_LINES);
+	uint16_t *line_data = heap_caps_malloc(width*buf_height*sizeof(uint16_t), MALLOC_CAP_DMA);
+    uint16_t currLine = y;
+    //uint16_t end_line = (y + height) - 1u;
 
-	uint16_t end_column = (x + width) - 1u;
-    uint16_t end_row = (y + height) - 1u;
+    assert(line_data != NULL);
 
-#if 0
-    esp_err_t ret;
-    spi_transaction_t t;
-
-    memset(&t, 0, sizeof(t));       //Zero out the transaction
-    t.length = 16;                 	//Len is in bytes, transaction length is in bits.
-    t.tx_data[0] = color >> 8u;     //Data
-    t.tx_data[1] = color & 0xffu;
-    t.user=(void*)1;                //D/C needs to be set to 1
-
-    /* Column Address Set */
-    lcd_cmd(priv_spi_handle, 0x2A, false);
-    data[0] = x >> 8; 				/* Start Col High 	*/
-    data[1] = x & 0xffu;			/* Start Col Low 	*/
-    data[2] = end_column >> 8;		/* End Col High	 	*/
-    data[3] = end_column & 0xffu;	/* End Col Low 		*/
-    lcd_data(priv_spi_handle, data, 4u);
-
-    /* Page Address Set */
-    lcd_cmd(priv_spi_handle, 0x2B, false);
-    data[0] = y >> 8; 			/* Start page High 	*/
-    data[1] = y & 0xffu;		/* Start page Low 	*/
-    data[2] = end_row >> 8;		/* End Row High	 	*/
-    data[3] = end_row & 0xffu;	/* End Row Low 		*/
-    lcd_data(priv_spi_handle, data, 4u);
-
-    lcd_cmd(priv_spi_handle, 0x2C, false);
-
-    /* Now we send the actual data. */
-    for (int x = 0; x < width; x++)
+    for (int x = 0; (x < width*PARALLEL_LINES);x++)
     {
-    	for (int y = 0; y < height; y++)
-    	{
-    		ret = spi_device_polling_transmit(priv_spi_handle, &t);  //Transmit!
-    	}
+    	line_data[x] = color;
     }
-#endif
+
+    int remainingHeight = height;
+
+    while (remainingHeight > 0)
+    {
+    	uint16_t chunkHeight = MIN(remainingHeight, PARALLEL_LINES);
+
+    	send_lines(priv_spi_handle, x, currLine, width, chunkHeight, line_data);
+    	wait_line_finish(priv_spi_handle);
+    	remainingHeight -=chunkHeight;
+    }
 }
 /******************** Private function definitions *********************/
 
