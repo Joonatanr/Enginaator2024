@@ -63,8 +63,11 @@ void app_main(void)
 
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
+	sdCard_Read_bmp_file("/test.bmp", priv_frame_buffer);
+
 	display_test_image(priv_frame_buffer);
 
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
     while (1)
     {

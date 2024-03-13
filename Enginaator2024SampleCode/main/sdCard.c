@@ -4,6 +4,8 @@
  *  Created on: Mar 13, 2024
  *      Author: JRE
  */
+#include <stdio.h>
+#include <string.h>
 
 #include "esp_timer.h"
 #include "esp_task_wdt.h"
@@ -102,6 +104,7 @@ void sdCard_init(void)
 
     ESP_LOGI(TAG, "Filesystem mounted");
 
+#if 0
     /* Lets try to load a bitmap. */
     const char *file_logo = MOUNT_POINT"/test.bmp";
     ret = read_bmp_file(file_logo, priv_frame_buffer);
@@ -114,9 +117,18 @@ void sdCard_init(void)
     // All done, unmount partition and disable SPI peripheral
     esp_vfs_fat_sdcard_unmount(mount_point, card);
     ESP_LOGI(TAG, "Card unmounted");
-
+#endif
     //deinitialize the bus after all devices are removed
     //spi_bus_free(host.slot);
+}
+
+
+void sdCard_Read_bmp_file(const char *path, uint16_t * output_buffer)
+{
+	char str[64] = MOUNT_POINT;
+	strcat(str, path);
+
+	read_bmp_file(str, output_buffer);
 }
 
 /*********** Private functions ***********/

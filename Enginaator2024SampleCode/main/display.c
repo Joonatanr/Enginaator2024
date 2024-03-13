@@ -35,12 +35,12 @@ typedef struct
 
 
 /* Forward declarations */
-void lcd_spi_pre_transfer_callback(spi_transaction_t *t);
-void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active);
-void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len);
-void lcd_init(spi_device_handle_t spi);
+static void lcd_spi_pre_transfer_callback(spi_transaction_t *t);
+static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active);
+static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len);
+static void lcd_init(spi_device_handle_t spi);
 static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata);
-static void send_line_finish(spi_device_handle_t spi);
+static void wait_line_finish(spi_device_handle_t spi);
 
 
 
@@ -138,7 +138,15 @@ void display_init(void)
     uint16_t *line_data = heap_caps_malloc(320*PARALLEL_LINES*sizeof(uint16_t), MALLOC_CAP_DMA);
     assert(line_data != NULL);
 
-    for(int x = 0; (x < 320*16);x++)
+    /*
+    for(int x = 0; (x < 320*240);x++)
+    {
+    	//line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
+    	priv_frame_buffer[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
+    }
+    */
+
+    for(int x = 0; (x < 320*PARALLEL_LINES);x++)
     {
     	line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
     }
@@ -147,7 +155,7 @@ void display_init(void)
     for (int y=0; y<240; y+=PARALLEL_LINES)
     {
     	send_lines(priv_spi_handle, y, line_data);
-    	send_line_finish(priv_spi_handle);
+    	wait_line_finish(priv_spi_handle);
     }
 }
 
@@ -158,17 +166,87 @@ void display_test_image(uint16_t *buf)
 	//Display some test data.
     for (int y=0; y<240; y += PARALLEL_LINES)
     {
-    	send_lines(priv_spi_handle, y, buf_ptr);
-    	send_line_finish(priv_spi_handle);
+    	send_lines(priv_spi_handle, y,  buf_ptr);
+    	wait_line_finish(priv_spi_handle);
 
     	buf_ptr += (PARALLEL_LINES * 320);
     }
 }
 
 
+void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
+{
+#if 0
+	esp_err_t ret;
+    int x;
+
+    uint16_t end_column = (x + width) - 1u;
+    uint16_t end_row = (y + height) - 1u;
+
+    uint16_t total_length = ((end_column - x) + 1u) * ((end_row - y) + 1u);
+
+    //Transaction descriptors. Declared static so they're not allocated on the stack; we need this memory even when this
+    //function is finished because the SPI driver needs access to it even while we're already calculating the next line.
+    static spi_transaction_t trans[6];
+    static uint16_t transferColor = color;
+
+    //In theory, it's better to initialize trans and data only once and hang on to the initialized
+    //variables. We allocate them on the stack, so we need to re-init them each call.
+    for (x=0; x<6; x++)
+    {
+        memset(&trans[x], 0, sizeof(spi_transaction_t));
+        if ((x&1)==0)
+        {
+            //Even transfers are commands
+            trans[x].length=8;
+            trans[x].user=(void*)0;
+        }
+        else
+        {
+            //Odd transfers are data
+            trans[x].length=8*4;
+            trans[x].user=(void*)1;
+        }
+        trans[x].flags=SPI_TRANS_USE_TXDATA;
+    }
+
+    trans[0].tx_data[0]=0x2A;           	//Column Address Set
+    trans[1].tx_data[0]=x >> 8u;            //Start Col High
+    trans[1].tx_data[1]=x & 0xffu;          //Start Col Low
+    trans[1].tx_data[2]=end_column >> 8;    //End Col High
+    trans[1].tx_data[3]=end_column & 0xff;  //End Col Low
+
+    trans[2].tx_data[0]=0x2B;           	//Page address set
+    trans[3].tx_data[0]=y >> 8;        		//Start page high
+    trans[3].tx_data[1]=y & 0xff;      		//start page low
+
+    trans[3].tx_data[2]=end_row >> 8;    	//end page high
+    trans[3].tx_data[3]=end_row & 0xff;  	//end page low
+
+    trans[4].tx_data[0]=0x2C;           	//memory write
+
+    //trans[5].tx_buffer=linedata;        	//finally send the line data
+    trans[5].length=total_length; 			//Data length, in bits
+    trans[5].flags=0; 					    //undo SPI_TRANS_USE_TXDATA flag
+
+    //Queue all transactions.
+    for (x=0; x<6; x++)
+    {
+        ret=spi_device_queue_trans(spi, &trans[x], portMAX_DELAY);
+        assert(ret==ESP_OK);
+    }
+
+    //When we are here, the SPI driver is busy (in the background) getting the transactions sent. That happens
+    //mostly using DMA, so the CPU doesn't have much to do here. We're not going to wait for the transaction to
+    //finish because we may as well spend the time calculating the next line. When that is done, we can call
+    //send_line_finish, which will wait for the transfers to be done and check their status.
+#endif
+}
+/******************** Private function definitions *********************/
+
 //This function is called (in irq context!) just before a transmission starts. It will
 //set the D/C line to the value indicated in the user field.
-void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
+static void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 {
     int dc=(int)t->user;
     gpio_set_level(PIN_NUM_DC, dc);
@@ -176,7 +254,7 @@ void lcd_spi_pre_transfer_callback(spi_transaction_t *t)
 
 
 //Initialize the display
-void lcd_init(spi_device_handle_t spi)
+static void lcd_init(spi_device_handle_t spi)
 {
     int cmd=0;
     const lcd_init_cmd_t* lcd_init_cmds;
@@ -222,7 +300,7 @@ void lcd_init(spi_device_handle_t spi)
  * mode for higher speed. The overhead of interrupt transactions is more than
  * just waiting for the transaction to complete.
  */
-void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active)
+static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active)
 {
     esp_err_t ret;
     spi_transaction_t t;
@@ -246,7 +324,7 @@ void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active)
  * mode for higher speed. The overhead of interrupt transactions is more than
  * just waiting for the transaction to complete.
  */
-void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
+static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
 {
     esp_err_t ret;
     spi_transaction_t t;
@@ -260,13 +338,7 @@ void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
 }
 
 
-/* To send a set of lines we have to send a command, 2 data bytes, another command, 2 more data bytes and another command
- * before sending the line data itself; a total of 6 transactions. (We can't put all of this in just one transaction
- * because the D/C line needs to be toggled in the middle.)
- * This routine queues these commands up as interrupt transactions so they get
- * sent faster (compared to calling spi_device_transmit several times), and at
- * the mean while the lines for next transactions can get calculated.
- */
+/* Updates the whole screen */
 static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata)
 {
     esp_err_t ret;
@@ -323,7 +395,7 @@ static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata)
 }
 
 
-static void send_line_finish(spi_device_handle_t spi)
+static void wait_line_finish(spi_device_handle_t spi)
 {
     spi_transaction_t *rtrans;
     esp_err_t ret;
