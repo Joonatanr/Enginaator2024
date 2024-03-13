@@ -39,7 +39,7 @@ static void lcd_spi_pre_transfer_callback(spi_transaction_t *t);
 static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active);
 static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len);
 static void lcd_init(spi_device_handle_t spi);
-static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata);
+static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata);
 static void wait_line_finish(spi_device_handle_t spi);
 
 
@@ -154,7 +154,7 @@ void display_init(void)
     //Display some test data.
     for (int y=0; y<240; y+=PARALLEL_LINES)
     {
-    	send_lines(priv_spi_handle, y, line_data);
+    	send_lines(priv_spi_handle, 0, y, 320, PARALLEL_LINES, line_data);
     	wait_line_finish(priv_spi_handle);
     }
 }
@@ -164,82 +164,59 @@ void display_test_image(uint16_t *buf)
     uint16_t * buf_ptr = buf;
 
 	//Display some test data.
-    for (int y=0; y<240; y += PARALLEL_LINES)
+    for (int y=0; y < 240; y += PARALLEL_LINES)
     {
-    	send_lines(priv_spi_handle, y,  buf_ptr);
+    	send_lines(priv_spi_handle, 0, y, 320, PARALLEL_LINES, buf_ptr);
     	wait_line_finish(priv_spi_handle);
 
     	buf_ptr += (PARALLEL_LINES * 320);
     }
 }
 
-
+/* Lets try a blocking implementation here... */
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-#if 0
-	esp_err_t ret;
-    int x;
+	uint8_t data[16];
 
-    uint16_t end_column = (x + width) - 1u;
+	uint16_t end_column = (x + width) - 1u;
     uint16_t end_row = (y + height) - 1u;
 
-    uint16_t total_length = ((end_column - x) + 1u) * ((end_row - y) + 1u);
+#if 0
+    esp_err_t ret;
+    spi_transaction_t t;
 
-    //Transaction descriptors. Declared static so they're not allocated on the stack; we need this memory even when this
-    //function is finished because the SPI driver needs access to it even while we're already calculating the next line.
-    static spi_transaction_t trans[6];
-    static uint16_t transferColor = color;
+    memset(&t, 0, sizeof(t));       //Zero out the transaction
+    t.length = 16;                 	//Len is in bytes, transaction length is in bits.
+    t.tx_data[0] = color >> 8u;     //Data
+    t.tx_data[1] = color & 0xffu;
+    t.user=(void*)1;                //D/C needs to be set to 1
 
-    //In theory, it's better to initialize trans and data only once and hang on to the initialized
-    //variables. We allocate them on the stack, so we need to re-init them each call.
-    for (x=0; x<6; x++)
+    /* Column Address Set */
+    lcd_cmd(priv_spi_handle, 0x2A, false);
+    data[0] = x >> 8; 				/* Start Col High 	*/
+    data[1] = x & 0xffu;			/* Start Col Low 	*/
+    data[2] = end_column >> 8;		/* End Col High	 	*/
+    data[3] = end_column & 0xffu;	/* End Col Low 		*/
+    lcd_data(priv_spi_handle, data, 4u);
+
+    /* Page Address Set */
+    lcd_cmd(priv_spi_handle, 0x2B, false);
+    data[0] = y >> 8; 			/* Start page High 	*/
+    data[1] = y & 0xffu;		/* Start page Low 	*/
+    data[2] = end_row >> 8;		/* End Row High	 	*/
+    data[3] = end_row & 0xffu;	/* End Row Low 		*/
+    lcd_data(priv_spi_handle, data, 4u);
+
+    lcd_cmd(priv_spi_handle, 0x2C, false);
+
+    /* Now we send the actual data. */
+    for (int x = 0; x < width; x++)
     {
-        memset(&trans[x], 0, sizeof(spi_transaction_t));
-        if ((x&1)==0)
-        {
-            //Even transfers are commands
-            trans[x].length=8;
-            trans[x].user=(void*)0;
-        }
-        else
-        {
-            //Odd transfers are data
-            trans[x].length=8*4;
-            trans[x].user=(void*)1;
-        }
-        trans[x].flags=SPI_TRANS_USE_TXDATA;
+    	for (int y = 0; y < height; y++)
+    	{
+    		ret = spi_device_polling_transmit(priv_spi_handle, &t);  //Transmit!
+    	}
     }
-
-    trans[0].tx_data[0]=0x2A;           	//Column Address Set
-    trans[1].tx_data[0]=x >> 8u;            //Start Col High
-    trans[1].tx_data[1]=x & 0xffu;          //Start Col Low
-    trans[1].tx_data[2]=end_column >> 8;    //End Col High
-    trans[1].tx_data[3]=end_column & 0xff;  //End Col Low
-
-    trans[2].tx_data[0]=0x2B;           	//Page address set
-    trans[3].tx_data[0]=y >> 8;        		//Start page high
-    trans[3].tx_data[1]=y & 0xff;      		//start page low
-
-    trans[3].tx_data[2]=end_row >> 8;    	//end page high
-    trans[3].tx_data[3]=end_row & 0xff;  	//end page low
-
-    trans[4].tx_data[0]=0x2C;           	//memory write
-
-    //trans[5].tx_buffer=linedata;        	//finally send the line data
-    trans[5].length=total_length; 			//Data length, in bits
-    trans[5].flags=0; 					    //undo SPI_TRANS_USE_TXDATA flag
-
-    //Queue all transactions.
-    for (x=0; x<6; x++)
-    {
-        ret=spi_device_queue_trans(spi, &trans[x], portMAX_DELAY);
-        assert(ret==ESP_OK);
-    }
-
-    //When we are here, the SPI driver is busy (in the background) getting the transactions sent. That happens
-    //mostly using DMA, so the CPU doesn't have much to do here. We're not going to wait for the transaction to
-    //finish because we may as well spend the time calculating the next line. When that is done, we can call
-    //send_line_finish, which will wait for the transfers to be done and check their status.
 #endif
 }
 /******************** Private function definitions *********************/
@@ -339,52 +316,64 @@ static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
 
 
 /* Updates the whole screen */
-static void send_lines(spi_device_handle_t spi, int ypos, uint16_t *linedata)
+static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata)
 {
     esp_err_t ret;
-    int x;
+    int total_size_bytes = width * height * 2;
+
     //Transaction descriptors. Declared static so they're not allocated on the stack; we need this memory even when this
     //function is finished because the SPI driver needs access to it even while we're already calculating the next line.
     static spi_transaction_t trans[6];
 
+	uint16_t end_column = (xPos + width) - 1u;
+    uint16_t end_row = (yPos + height) - 1u;
+
+    if (total_size_bytes > DISPLAY_MAX_TRANSFER_SIZE)
+    {
+    	/* Looks like we cannot go over this limit, so this will need to be taken into account when calling this function. */
+    	printf("Jama...\n");
+    	return;
+    }
+
     //In theory, it's better to initialize trans and data only once and hang on to the initialized
     //variables. We allocate them on the stack, so we need to re-init them each call.
-    for (x=0; x<6; x++)
+    for (int ix = 0; ix < 6; ix++)
     {
-        memset(&trans[x], 0, sizeof(spi_transaction_t));
-        if ((x&1)==0)
+        memset(&trans[ix], 0, sizeof(spi_transaction_t));
+        if ((ix & 1)==0)
         {
             //Even transfers are commands
-            trans[x].length=8;
-            trans[x].user=(void*)0;
+            trans[ix].length=8;
+            trans[ix].user=(void*)0;
         }
         else
         {
             //Odd transfers are data
-            trans[x].length=8*4;
-            trans[x].user=(void*)1;
+            trans[ix].length=8*4;
+            trans[ix].user=(void*)1;
         }
-        trans[x].flags=SPI_TRANS_USE_TXDATA;
+        trans[ix].flags=SPI_TRANS_USE_TXDATA;
     }
-    trans[0].tx_data[0]=0x2A;           //Column Address Set
-    trans[1].tx_data[0]=0;              //Start Col High
-    trans[1].tx_data[1]=0;              //Start Col Low
-    trans[1].tx_data[2]=(320)>>8;       //End Col High
-    trans[1].tx_data[3]=(320)&0xff;     //End Col Low
-    trans[2].tx_data[0]=0x2B;           //Page address set
-    trans[3].tx_data[0]=ypos>>8;        //Start page high
-    trans[3].tx_data[1]=ypos&0xff;      //start page low
-    trans[3].tx_data[2]=(ypos+PARALLEL_LINES)>>8;    //end page high
-    trans[3].tx_data[3]=(ypos+PARALLEL_LINES)&0xff;  //end page low
-    trans[4].tx_data[0]=0x2C;           //memory write
-    trans[5].tx_buffer=linedata;        //finally send the line data
-    trans[5].length=320*2*8*PARALLEL_LINES;          //Data length, in bits
+
+    trans[0].tx_data[0]=0x2A;           	//Column Address Set
+    trans[1].tx_data[0]=xPos >> 8;      	//Start Col High
+    trans[1].tx_data[1]=xPos & 0xffu;   	//Start Col Low
+    trans[1].tx_data[2]=end_column >> 8;	//End Col High
+    trans[1].tx_data[3]=end_column & 0xff;	//End Col Low
+    trans[2].tx_data[0]=0x2B;           	//Page address set
+    trans[3].tx_data[0]=yPos >> 8;        	//Start page high
+    trans[3].tx_data[1]=yPos & 0xff;      	//start page low
+    trans[3].tx_data[2]=end_row >> 8;    	//end page high
+    trans[3].tx_data[3]=end_row & 0xff;  	//end page low
+    trans[4].tx_data[0]=0x2C;           	//memory write
+    trans[5].tx_buffer=linedata;        	//finally send the line data
+    trans[5].length=total_size_bytes * 8;   //Data length, in bits
     trans[5].flags=0; //undo SPI_TRANS_USE_TXDATA flag
 
     //Queue all transactions.
-    for (x=0; x<6; x++)
+    for (int ix=0; ix<6; ix++)
     {
-        ret=spi_device_queue_trans(spi, &trans[x], portMAX_DELAY);
+        ret=spi_device_queue_trans(spi, &trans[ix], portMAX_DELAY);
         assert(ret==ESP_OK);
     }
 
