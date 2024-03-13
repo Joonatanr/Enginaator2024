@@ -14,6 +14,8 @@
 
 #define BLINK_GPIO 38u
 #define CONFIG_BLINK_PERIOD 10u
+#define BACKGROUND_COLOR COLOR_BLACK
+
 
 #if 0
 #define PIN_NUM_MISO  19
@@ -35,6 +37,10 @@ static void configure_led(void);
 static void configure_timer(void);
 static void configure_spi(void);
 static void drawRectangleInFrameBuf(int x, int y, int width, int height, uint16_t color);
+static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_t * data_buf);
+
+static void drawBackGround(void);
+static void drawStar(uint16_t xPos, uint16_t yPos);
 
 void timer_callback_10msec(void *param);
 
@@ -64,25 +70,35 @@ void app_main(void)
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	sdCard_Read_bmp_file("/test.bmp", &priv_frame_buffer[0][0]);
-
 	display_test_image(&priv_frame_buffer[0][0]);
 
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	uint16_t * ship_buf = heap_caps_malloc(60*60*sizeof(uint16_t), MALLOC_CAP_DMA);
+	sdCard_Read_bmp_file("/ship.bmp", ship_buf);
+
+	for(int x = 0; x < 60*60; x++)
+	{
+		if (ship_buf[x] == 0xffffu)
+		{
+			ship_buf[x] = BACKGROUND_COLOR;
+		}
+	}
+
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(0, 0, 60, 40, COLOR_RED);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(40, 40, 60, 40, COLOR_GREEN);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(80, 80, 60, 40, COLOR_BLUE);
 
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(120, 120, 60, 40, COLOR_CYAN);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(160, 160, 60, 40, COLOR_YELLOW);
-	vTaskDelay(500 / portTICK_PERIOD_MS);
+	vTaskDelay(200 / portTICK_PERIOD_MS);
 	display_fillRectangle(200, 200, 60, 40, COLOR_MAGENTA);
 
 
-	vTaskDelay(2000 / portTICK_PERIOD_MS);
+	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	/* Lets try something dynamic now... */
 	drawRectangleInFrameBuf(0, 0, 320, 240, COLOR_BLUE);
@@ -98,7 +114,7 @@ void app_main(void)
 	{
 		if(direction)
 		{
-			if(yLocation >= 199u)
+			if(yLocation >= 184u)
 			{
 				yLocation-= speed;
 				direction = false;
@@ -122,9 +138,12 @@ void app_main(void)
 		}
 
 		/* Draw the whole background */
-		drawRectangleInFrameBuf(0, 0, 320, 240, COLOR_BLUE);
+		drawBackGround();
+
 		/* Draw */
-		drawRectangleInFrameBuf(140, yLocation, 40, 40, COLOR_RED);
+		//drawRectangleInFrameBuf(140, yLocation, 40, 40, COLOR_RED);
+		drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
+
 		drawRectangleInFrameBuf(70,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
 		drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
 
@@ -143,6 +162,73 @@ static void drawRectangleInFrameBuf(int xPos, int yPos, int width, int height, u
 		{
 			priv_frame_buffer[y][x] = color;
 		}
+	}
+}
+
+static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_t * data_buf)
+{
+	uint16_t * data_ptr = data_buf;
+
+	for (int x = xPos; ((x < (xPos+width)) && (x < 320)); x++)
+	{
+		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
+		{
+			priv_frame_buffer[y][x] = *data_ptr;
+			data_ptr++;
+		}
+	}
+}
+
+
+#define NUMBER_OF_STARS 20
+typedef struct
+{
+	int xPos;
+	int yPos;
+} StarElement_T;
+
+StarElement_T stars[NUMBER_OF_STARS];
+
+static void drawBackGround(void)
+{
+	static bool isStarsInited = false;
+
+	if(!isStarsInited)
+	{
+		for (int x = 0; x < NUMBER_OF_STARS; x++)
+		{
+			stars[x].xPos = random() % 320;
+			stars[x].yPos = random() % 240;
+
+			printf("Star at : X%d, Y%d\n", stars[x].xPos, stars[x].yPos);
+		}
+
+		isStarsInited = true;
+	}
+
+	drawRectangleInFrameBuf(0, 0, 320, 240, BACKGROUND_COLOR);
+
+	for (int x = 0; x < NUMBER_OF_STARS; x++)
+	{
+		stars[x].xPos++;
+		if (stars[x].xPos >= 319)
+		{
+			stars[x].xPos = 0;
+		}
+
+		drawStar(stars[x].xPos, stars[x].yPos);
+	}
+
+}
+
+static void drawStar(uint16_t xPos, uint16_t yPos)
+{
+	if(xPos < 319u && yPos < 239u)
+	{
+		priv_frame_buffer[yPos][xPos] = 0xffffu;
+		priv_frame_buffer[yPos + 1][xPos] = 0xffffu;
+		priv_frame_buffer[yPos][xPos + 1] = 0xffffu;
+		priv_frame_buffer[yPos + 1][xPos + 1] = 0xffffu;
 	}
 }
 
