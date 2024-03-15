@@ -30,8 +30,6 @@
 
 #define DISPLAY_MAX_TRANSFER_SIZE 40*320*2
 
-extern uint16_t priv_frame_buffer[240][320];
-
 void display_init(void);
 void display_test_image(uint16_t *buf);
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color);

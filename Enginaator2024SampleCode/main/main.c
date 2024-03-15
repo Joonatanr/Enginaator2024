@@ -55,6 +55,7 @@ uint16_t priv_frame_buffer[240][320];
 void app_main(void)
 {
 	printf("Starting program...\n");
+    ESP_LOGI("memory", "Total available memory: %u bytes", heap_caps_get_total_size(MALLOC_CAP_8BIT));
 
 	configure_led();
 
