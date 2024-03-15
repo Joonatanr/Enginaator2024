@@ -70,10 +70,11 @@ void app_main(void)
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	sdCard_Read_bmp_file("/test.bmp", &priv_frame_buffer[0][0]);
-	display_test_image(&priv_frame_buffer[0][0]);
 
 	uint16_t * ship_buf = heap_caps_malloc(60*60*sizeof(uint16_t), MALLOC_CAP_DMA);
 	sdCard_Read_bmp_file("/ship.bmp", ship_buf);
+
+	display_test_image(&priv_frame_buffer[0][0]);
 
 	for(int x = 0; x < 60*60; x++)
 	{
@@ -101,11 +102,6 @@ void app_main(void)
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	/* Lets try something dynamic now... */
-	drawRectangleInFrameBuf(0, 0, 320, 240, COLOR_BLUE);
-	drawRectangleInFrameBuf(140, 0, 40, 40, COLOR_RED);
-
-	display_test_image(&priv_frame_buffer[0][0]);
-
 	int yLocation = 0;
 	bool direction = true;
 	int speed = 4;
@@ -144,12 +140,21 @@ void app_main(void)
 		//drawRectangleInFrameBuf(140, yLocation, 40, 40, COLOR_RED);
 		drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
 
-		drawRectangleInFrameBuf(70,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
+		drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
 		drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
 
 		display_test_image(&priv_frame_buffer[0][0]);
 
-		vTaskDelay(10u / portTICK_PERIOD_MS);
+		vTaskDelay(20u / portTICK_PERIOD_MS);
+	}
+
+	printf("System idle Process...\n");
+	while(1)
+	{
+		vTaskDelay(500u / portTICK_PERIOD_MS);
+		gpio_set_level(BLINK_GPIO, 1);
+		vTaskDelay(500u / portTICK_PERIOD_MS);
+		gpio_set_level(BLINK_GPIO, 0);
 	}
 }
 

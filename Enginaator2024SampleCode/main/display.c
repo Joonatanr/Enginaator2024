@@ -156,7 +156,7 @@ void display_init(void)
         .clock_speed_hz=40*1000*1000,           //Clock out at 10 MHz
         .mode=0,                                //SPI mode 0
         .spics_io_num=PIN_NUM_CS,               //CS pin
-        .queue_size=7,                          //We want to be able to queue 7 transactions at a time
+        .queue_size=12,                         //We want to be able to queue 7 transactions at a time
         .pre_cb=lcd_spi_pre_transfer_callback,  //Specify pre-transfer callback to handle D/C line
     };
 
@@ -199,7 +199,8 @@ void display_init(void)
 
 void display_test_image(uint16_t *buf)
 {
-    uint16_t * buf_ptr = buf;
+#if 0
+	uint16_t * buf_ptr = buf;
 
 	//Display some test data.
     for (int y=0; y < 240; y += PARALLEL_LINES)
@@ -209,6 +210,9 @@ void display_test_image(uint16_t *buf)
 
     	buf_ptr += (PARALLEL_LINES * 320);
     }
+#endif
+    wait_line_finish(priv_spi_handle);
+    send_lines(priv_spi_handle, 0, 0, 320, 240, buf);
 }
 
 /* Lets try a blocking implementation here... */
@@ -232,8 +236,9 @@ void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
     {
     	uint16_t chunkHeight = MIN(remainingHeight, PARALLEL_LINES);
 
-    	send_lines(priv_spi_handle, x, currLine, width, chunkHeight, line_data);
     	wait_line_finish(priv_spi_handle);
+    	send_lines(priv_spi_handle, x, currLine, width, chunkHeight, line_data);
+
     	remainingHeight -=chunkHeight;
     }
     heap_caps_free(line_data);
@@ -337,16 +342,20 @@ static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
     assert(ret==ESP_OK);            //Should have had no issues.
 }
 
+uint8_t priv_number_of_transfers = 0u;
 
 /* Updates the whole screen */
 static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata)
 {
     esp_err_t ret;
     int total_size_bytes = width * height * 2;
+    int chunk_ix = 5;
+    uint16_t * line_ptr;
+    int curr_transfer_size;
 
     //Transaction descriptors. Declared static so they're not allocated on the stack; we need this memory even when this
     //function is finished because the SPI driver needs access to it even while we're already calculating the next line.
-    static spi_transaction_t trans[6];
+    static spi_transaction_t trans[12];
 
 	uint16_t end_column = (xPos + width) - 1u;
     uint16_t end_row = (yPos + height) - 1u;
@@ -354,18 +363,22 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
     end_column = MIN(end_column, 320);
     end_row = MIN(end_row, 240);
 
+#if 0
     if (total_size_bytes > DISPLAY_MAX_TRANSFER_SIZE)
     {
     	/* Looks like we cannot go over this limit, so this will need to be taken into account when calling this function. */
     	printf("Jama...\n");
     	return;
     }
+#endif
 
     //In theory, it's better to initialize trans and data only once and hang on to the initialized
     //variables. We allocate them on the stack, so we need to re-init them each call.
-    for (int ix = 0; ix < 6; ix++)
+    for (int ix = 0; ix < 12; ix++)
     {
         memset(&trans[ix], 0, sizeof(spi_transaction_t));
+
+#if 0
         if ((ix & 1)==0)
         {
             //Even transfers are commands
@@ -378,30 +391,66 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
             trans[ix].length=8*4;
             trans[ix].user=(void*)1;
         }
+#endif
         trans[ix].flags=SPI_TRANS_USE_TXDATA;
     }
 
     trans[0].tx_data[0]=0x2A;           	//Column Address Set
+    trans[0].length = 8;
+    trans[0].user=(void*)0;
+
     trans[1].tx_data[0]=xPos >> 8;      	//Start Col High
     trans[1].tx_data[1]=xPos & 0xffu;   	//Start Col Low
     trans[1].tx_data[2]=end_column >> 8;	//End Col High
     trans[1].tx_data[3]=end_column & 0xff;	//End Col Low
+    trans[1].length = 8*4;
+    trans[1].user=(void*)1;
+
     trans[2].tx_data[0]=0x2B;           	//Page address set
+    trans[2].length = 8;
+    trans[2].user=(void*)0;
+
     trans[3].tx_data[0]=yPos >> 8;        	//Start page high
     trans[3].tx_data[1]=yPos & 0xff;      	//start page low
     trans[3].tx_data[2]=end_row >> 8;    	//end page high
     trans[3].tx_data[3]=end_row & 0xff;  	//end page low
-    trans[4].tx_data[0]=0x2C;           	//memory write
-    trans[5].tx_buffer=linedata;        	//finally send the line data
-    trans[5].length=total_size_bytes * 8;   //Data length, in bits
-    trans[5].flags=0; //undo SPI_TRANS_USE_TXDATA flag
+    trans[3].length = 8*4;
+    trans[3].user=(void*)1;
 
+    trans[4].tx_data[0]=0x2C;           	//memory write
+    trans[4].length = 8;
+    trans[4].user=(void*)0;
+
+    line_ptr = linedata;
+
+    printf("Total size bytes : %d\n", total_size_bytes);
+
+    while(total_size_bytes > 0)
+    {
+    	curr_transfer_size = MIN(total_size_bytes, DISPLAY_MAX_TRANSFER_SIZE);
+    	trans[chunk_ix].tx_buffer=line_ptr;        			//finally send the line data
+    	trans[chunk_ix].length=curr_transfer_size * 8;  	//Data length, in bits
+    	trans[chunk_ix].flags = 0; 							//undo SPI_TRANS_USE_TXDATA flag
+    	trans[chunk_ix].user =(void*)1;
+
+    	chunk_ix++;
+    	total_size_bytes -= curr_transfer_size;
+    	line_ptr += (curr_transfer_size / 2); //Not ideal... We have a U16 ptr, but transfer size is in bytes...
+    }
+
+    trans[chunk_ix - 1].flags = 0;
+    priv_number_of_transfers = chunk_ix;
+
+    printf("Spi Begin\n");
+    //spi_device_acquire_bus(spi, portMAX_DELAY);
     //Queue all transactions.
-    for (int ix=0; ix<6; ix++)
+    for (int ix=0; ix < chunk_ix; ix++)
     {
         ret=spi_device_queue_trans(spi, &trans[ix], portMAX_DELAY);
+        printf("spi : transfer %d, size %d, data %x ,res %d\n", ix, trans[ix].length / 8 , (unsigned int)trans[ix].tx_buffer,ret);
         assert(ret==ESP_OK);
     }
+    printf("Spi End\n");
 
     //When we are here, the SPI driver is busy (in the background) getting the transactions sent. That happens
     //mostly using DMA, so the CPU doesn't have much to do here. We're not going to wait for the transaction to
@@ -414,11 +463,13 @@ static void wait_line_finish(spi_device_handle_t spi)
 {
     spi_transaction_t *rtrans;
     esp_err_t ret;
-    //Wait for all 6 transactions to be done and get back the results.
-    for (int x=0; x<6; x++)
+    //Wait for all transactions to be done and get back the results.
+    for (int x=0; x < priv_number_of_transfers; x++)
     {
         ret=spi_device_get_trans_result(spi, &rtrans, portMAX_DELAY);
         assert(ret==ESP_OK);
         //We could inspect rtrans now if we received any info back. The LCD is treated as write-only, though.
     }
+    priv_number_of_transfers = 0u;
+    //spi_device_release_bus(priv_spi_handle);
 }
