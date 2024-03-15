@@ -137,7 +137,6 @@ void app_main(void)
 		drawBackGround();
 
 		/* Draw */
-		//drawRectangleInFrameBuf(140, yLocation, 40, 40, COLOR_RED);
 		drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
 
 		drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
@@ -145,7 +144,7 @@ void app_main(void)
 
 		display_test_image(&priv_frame_buffer[0][0]);
 
-		vTaskDelay(20u / portTICK_PERIOD_MS);
+		vTaskDelay(40u / portTICK_PERIOD_MS);
 	}
 
 	printf("System idle Process...\n");

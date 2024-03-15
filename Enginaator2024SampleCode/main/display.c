@@ -173,7 +173,7 @@ void display_init(void)
     printf("Transmitting test data... \n");
 
     /* Create some test data for 16 lines. */
-    uint16_t *line_data = heap_caps_malloc(320*PARALLEL_LINES*sizeof(uint16_t), MALLOC_CAP_DMA);
+    uint16_t *line_data = heap_caps_malloc(320*40u*sizeof(uint16_t), MALLOC_CAP_DMA);
     assert(line_data != NULL);
 
     /*
@@ -184,48 +184,37 @@ void display_init(void)
     }
     */
 
-    for(int x = 0; (x < 320*PARALLEL_LINES);x++)
+    for(int x = 0; (x < 320*40u);x++)
     {
     	line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
     }
 
     //Display some test data.
-    for (int y=0; y<240; y+=PARALLEL_LINES)
+    for (int y=0; y<240; y+=40u)
     {
-    	send_lines(priv_spi_handle, 0, y, 320, PARALLEL_LINES, line_data);
+    	send_lines(priv_spi_handle, 0, y, 320, 40u, line_data);
     	wait_line_finish(priv_spi_handle);
     }
 }
 
 void display_test_image(uint16_t *buf)
 {
-#if 0
-	uint16_t * buf_ptr = buf;
-
-	//Display some test data.
-    for (int y=0; y < 240; y += PARALLEL_LINES)
-    {
-    	send_lines(priv_spi_handle, 0, y, 320, PARALLEL_LINES, buf_ptr);
-    	wait_line_finish(priv_spi_handle);
-
-    	buf_ptr += (PARALLEL_LINES * 320);
-    }
-#endif
     wait_line_finish(priv_spi_handle);
     send_lines(priv_spi_handle, 0, 0, 320, 240, buf);
 }
 
 /* Lets try a blocking implementation here... */
+/* TODO : Fix this. */
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-    uint16_t buf_height = MIN(height, PARALLEL_LINES);
+    uint16_t buf_height = MIN(height, 40u);
 	uint16_t *line_data = heap_caps_malloc(width*buf_height*sizeof(uint16_t), MALLOC_CAP_DMA);
     uint16_t currLine = y;
     //uint16_t end_line = (y + height) - 1u;
 
     assert(line_data != NULL);
 
-    for (int x = 0; (x < width*PARALLEL_LINES);x++)
+    for (int x = 0; (x < width*40u);x++)
     {
     	line_data[x] = color;
     }
@@ -234,7 +223,7 @@ void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t heig
 
     while (remainingHeight > 0)
     {
-    	uint16_t chunkHeight = MIN(remainingHeight, PARALLEL_LINES);
+    	uint16_t chunkHeight = MIN(remainingHeight, 40);
 
     	wait_line_finish(priv_spi_handle);
     	send_lines(priv_spi_handle, x, currLine, width, chunkHeight, line_data);
@@ -363,35 +352,11 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
     end_column = MIN(end_column, 320);
     end_row = MIN(end_row, 240);
 
-#if 0
-    if (total_size_bytes > DISPLAY_MAX_TRANSFER_SIZE)
-    {
-    	/* Looks like we cannot go over this limit, so this will need to be taken into account when calling this function. */
-    	printf("Jama...\n");
-    	return;
-    }
-#endif
-
     //In theory, it's better to initialize trans and data only once and hang on to the initialized
     //variables. We allocate them on the stack, so we need to re-init them each call.
     for (int ix = 0; ix < 12; ix++)
     {
         memset(&trans[ix], 0, sizeof(spi_transaction_t));
-
-#if 0
-        if ((ix & 1)==0)
-        {
-            //Even transfers are commands
-            trans[ix].length=8;
-            trans[ix].user=(void*)0;
-        }
-        else
-        {
-            //Odd transfers are data
-            trans[ix].length=8*4;
-            trans[ix].user=(void*)1;
-        }
-#endif
         trans[ix].flags=SPI_TRANS_USE_TXDATA;
     }
 
@@ -423,8 +388,6 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
 
     line_ptr = linedata;
 
-    printf("Total size bytes : %d\n", total_size_bytes);
-
     while(total_size_bytes > 0)
     {
     	curr_transfer_size = MIN(total_size_bytes, DISPLAY_MAX_TRANSFER_SIZE);
@@ -441,21 +404,12 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
     trans[chunk_ix - 1].flags = 0;
     priv_number_of_transfers = chunk_ix;
 
-    printf("Spi Begin\n");
-    //spi_device_acquire_bus(spi, portMAX_DELAY);
     //Queue all transactions.
     for (int ix=0; ix < chunk_ix; ix++)
     {
         ret=spi_device_queue_trans(spi, &trans[ix], portMAX_DELAY);
-        printf("spi : transfer %d, size %d, data %x ,res %d\n", ix, trans[ix].length / 8 , (unsigned int)trans[ix].tx_buffer,ret);
         assert(ret==ESP_OK);
     }
-    printf("Spi End\n");
-
-    //When we are here, the SPI driver is busy (in the background) getting the transactions sent. That happens
-    //mostly using DMA, so the CPU doesn't have much to do here. We're not going to wait for the transaction to
-    //finish because we may as well spend the time calculating the next line. When that is done, we can call
-    //send_line_finish, which will wait for the transfers to be done and check their status.
 }
 
 
@@ -471,5 +425,4 @@ static void wait_line_finish(spi_device_handle_t spi)
         //We could inspect rtrans now if we received any info back. The LCD is treated as write-only, though.
     }
     priv_number_of_transfers = 0u;
-    //spi_device_release_bus(priv_spi_handle);
 }
