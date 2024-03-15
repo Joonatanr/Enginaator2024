@@ -106,8 +106,15 @@ void app_main(void)
 	bool direction = true;
 	int speed = 4;
 
+	TickType_t xLastWakeTime;
+	const TickType_t xFrequency = 40u / portTICK_PERIOD_MS;
+
+	xLastWakeTime = xTaskGetTickCount ();
+
 	while(1)
 	{
+		vTaskDelayUntil( &xLastWakeTime, xFrequency );
+
 		if(direction)
 		{
 			if(yLocation >= 184u)
@@ -143,8 +150,6 @@ void app_main(void)
 		drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
 
 		display_test_image(&priv_frame_buffer[0][0]);
-
-		vTaskDelay(40u / portTICK_PERIOD_MS);
 	}
 
 	printf("System idle Process...\n");
