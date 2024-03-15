@@ -176,14 +176,6 @@ void display_init(void)
     uint16_t *line_data = heap_caps_malloc(320*40u*sizeof(uint16_t), MALLOC_CAP_DMA);
     assert(line_data != NULL);
 
-    /*
-    for(int x = 0; (x < 320*240);x++)
-    {
-    	//line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
-    	priv_frame_buffer[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
-    }
-    */
-
     for(int x = 0; (x < 320*40u);x++)
     {
     	line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);

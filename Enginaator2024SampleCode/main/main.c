@@ -39,6 +39,10 @@ static void configure_spi(void);
 static void drawRectangleInFrameBuf(int x, int y, int width, int height, uint16_t color);
 static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_t * data_buf);
 
+static void updateDisplayedElements(void);
+static void updateFrameBuffer(void);
+static void flushFrameBuffer(void);
+
 static void drawBackGround(void);
 static void drawStar(uint16_t xPos, uint16_t yPos);
 
@@ -49,13 +53,39 @@ volatile bool timer_flag = false;
 static uint16_t timer_counter = 0u;
 static const char *TAG = "Main Program";
 
-uint16_t priv_frame_buffer[240][320];
+static int yLocation = 0;
+static bool direction = true;
+static int speed = 4;
+
+#define ENABLE_DOUBLE_BUFFERING
+
+//uint16_t priv_frame_buffer[240][320];
+/* Lets test a double buffered solution. */
+uint16_t * priv_frame_buffer1;
+#ifdef ENABLE_DOUBLE_BUFFERING
+uint16_t * priv_frame_buffer2;
+#endif
+
+uint16_t ** priv_curr_frame_buffer;
+
+/* Cached visual elements. */
+uint16_t * ship_buf;
 
 /* Public functions */
 void app_main(void)
 {
 	printf("Starting program...\n");
     ESP_LOGI("memory", "Total available memory: %u bytes", heap_caps_get_total_size(MALLOC_CAP_8BIT));
+
+    priv_frame_buffer1 = heap_caps_malloc(240*320*sizeof(uint16_t), MALLOC_CAP_DMA);
+    assert(priv_frame_buffer1);
+
+#ifdef ENABLE_DOUBLE_BUFFERING
+    priv_frame_buffer2 = heap_caps_malloc(240*320*sizeof(uint16_t), MALLOC_CAP_DMA);
+    assert(priv_frame_buffer2);
+#endif
+
+    priv_curr_frame_buffer = &priv_frame_buffer1;
 
 	configure_led();
 
@@ -70,12 +100,12 @@ void app_main(void)
 
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
-	sdCard_Read_bmp_file("/test.bmp", &priv_frame_buffer[0][0]);
+	sdCard_Read_bmp_file("/test.bmp", *priv_curr_frame_buffer);
 
-	uint16_t * ship_buf = heap_caps_malloc(60*60*sizeof(uint16_t), MALLOC_CAP_DMA);
+	ship_buf = heap_caps_malloc(60*60*sizeof(uint16_t), MALLOC_CAP_DMA);
 	sdCard_Read_bmp_file("/ship.bmp", ship_buf);
 
-	display_test_image(&priv_frame_buffer[0][0]);
+	display_test_image(*priv_curr_frame_buffer);
 
 	for(int x = 0; x < 60*60; x++)
 	{
@@ -103,54 +133,43 @@ void app_main(void)
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
 	/* Lets try something dynamic now... */
-	int yLocation = 0;
-	bool direction = true;
-	int speed = 4;
+
 
 	TickType_t xLastWakeTime;
 	const TickType_t xFrequency = 40u / portTICK_PERIOD_MS;
 
 	xLastWakeTime = xTaskGetTickCount ();
 
+#ifdef ENABLE_DOUBLE_BUFFERING
+	bool isBufferOne = true;
+#endif
+
 	while(1)
 	{
 		vTaskDelayUntil( &xLastWakeTime, xFrequency );
 
-		if(direction)
+#ifdef ENABLE_DOUBLE_BUFFERING
+		/* Switch the buffer - here we implement double buffering. */
+		if (isBufferOne)
 		{
-			if(yLocation >= 184u)
-			{
-				yLocation-= speed;
-				direction = false;
-			}
-			else
-			{
-				yLocation+= speed;
-			}
+			priv_curr_frame_buffer = &priv_frame_buffer2;
+			isBufferOne = false;
 		}
 		else
 		{
-			if (yLocation <= 0)
-			{
-				yLocation+= speed;
-				direction = true;
-			}
-			else
-			{
-				yLocation-= speed;
-			}
+			priv_curr_frame_buffer = &priv_frame_buffer1;
+			isBufferOne = true;
 		}
+#endif
 
-		/* Draw the whole background */
-		drawBackGround();
+		/*Here we update things like the location of the elements. Later we will check for buttons etc. */
+		updateDisplayedElements();
 
-		/* Draw */
-		drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
+		/*Here we draw into the frame buffer. */
+		updateFrameBuffer();
 
-		drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
-		drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
-
-		display_test_image(&priv_frame_buffer[0][0]);
+		/* Here we send the frame buffer to be drawn by the display driver. */
+		flushFrameBuffer();
 	}
 
 	printf("System idle Process...\n");
@@ -163,6 +182,7 @@ void app_main(void)
 	}
 }
 
+#define SET_FRAME_BUF_PIXEL(buf,x,y,color) *((buf) + (x) + (320*(y)))=color
 
 static void drawRectangleInFrameBuf(int xPos, int yPos, int width, int height, uint16_t color)
 {
@@ -170,7 +190,8 @@ static void drawRectangleInFrameBuf(int xPos, int yPos, int width, int height, u
 	{
 		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
 		{
-			priv_frame_buffer[y][x] = color;
+			//priv_frame_buffer[y][x] = color;
+			SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, x, y, color);
 		}
 	}
 }
@@ -183,13 +204,63 @@ static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_
 	{
 		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
 		{
-			priv_frame_buffer[y][x] = *data_ptr;
+			//priv_frame_buffer[y][x] = *data_ptr;
+			SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, x, y, *data_ptr);
 			data_ptr++;
 		}
 	}
 }
 
+static void updateDisplayedElements()
+{
+	if(direction)
+	{
+		if(yLocation >= 184u)
+		{
+			yLocation-= speed;
+			direction = false;
+		}
+		else
+		{
+			yLocation+= speed;
+		}
+	}
+	else
+	{
+		if (yLocation <= 0)
+		{
+			yLocation+= speed;
+			direction = true;
+		}
+		else
+		{
+			yLocation-= speed;
+		}
+	}
+}
 
+
+static void updateFrameBuffer(void)
+{
+	/* Draw the whole background */
+	drawBackGround();
+
+	/* Draw Elements */
+	drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
+
+	drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
+	drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
+}
+
+
+static void flushFrameBuffer(void)
+{
+	display_test_image(*priv_curr_frame_buffer);
+}
+
+
+
+/***** Helper functions *****/
 #define NUMBER_OF_STARS 20
 typedef struct
 {
@@ -235,10 +306,10 @@ static void drawStar(uint16_t xPos, uint16_t yPos)
 {
 	if(xPos < 319u && yPos < 239u)
 	{
-		priv_frame_buffer[yPos][xPos] = 0xffffu;
-		priv_frame_buffer[yPos + 1][xPos] = 0xffffu;
-		priv_frame_buffer[yPos][xPos + 1] = 0xffffu;
-		priv_frame_buffer[yPos + 1][xPos + 1] = 0xffffu;
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos, 		0xffffu);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos,	 	0xffffu);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos + 1, 	0xffffu);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos + 1, 	0xffffu);
 	}
 }
 
