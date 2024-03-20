@@ -39,77 +39,13 @@ static void lcd_spi_pre_transfer_callback(spi_transaction_t *t);
 static void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd, bool keep_cs_active);
 static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len);
 static void lcd_init(spi_device_handle_t spi);
-static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata);
-static void wait_line_finish(spi_device_handle_t spi);
+static void send_display_data(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata, bool isBufferConstant);
+static void wait_display_data_finish(spi_device_handle_t spi);
 
-
-
-#if 0
-DRAM_ATTR static const lcd_init_cmd_t ili_init_cmds[]=
-{
-    /* Power contorl B, power control = 0, DC_ENA = 1 */
-    {0xCF, {0x00, 0x83, 0X30}, 3},
-    /* Power on sequence control,
-     * cp1 keeps 1 frame, 1st frame enable
-     * vcl = 0, ddvdh=3, vgh=1, vgl=2
-     * DDVDH_ENH=1
-     */
-    {0xED, {0x64, 0x03, 0X12, 0X81}, 4},
-    /* Driver timing control A,
-     * non-overlap=default +1
-     * EQ=default - 1, CR=default
-     * pre-charge=default - 1
-     */
-    {0xE8, {0x85, 0x01, 0x79}, 3},
-    /* Power control A, Vcore=1.6V, DDVDH=5.6V */
-    {0xCB, {0x39, 0x2C, 0x00, 0x34, 0x02}, 5},
-    /* Pump ratio control, DDVDH=2xVCl */
-    {0xF7, {0x20}, 1},
-    /* Driver timing control, all=0 unit */
-    {0xEA, {0x00, 0x00}, 2},
-    /* Power control 1, GVDD=4.75V */
-    {0xC0, {0x26}, 1},
-    /* Power control 2, DDVDH=VCl*2, VGH=VCl*7, VGL=-VCl*3 */
-    {0xC1, {0x11}, 1},
-    /* VCOM control 1, VCOMH=4.025V, VCOML=-0.950V */
-    {0xC5, {0x35, 0x3E}, 2},
-    /* VCOM control 2, VCOMH=VMH-2, VCOML=VML-2 */
-    {0xC7, {0xBE}, 1},
-    /* Memory access contorl, MX=MY=0, MV=1, ML=0, BGR=1, MH=0 */
-    {0x36, {0x28}, 1},
-	//{0x36, {0xF8}, 1},
-	/* Pixel format, 16bits/pixel for RGB/MCU interface */
-    {0x3A, {0x55}, 1},
-    /* Frame rate control, f=fosc, 70Hz fps */
-    {0xB1, {0x00, 0x1B}, 2},
-    /* Enable 3G, disabled */
-    {0xF2, {0x08}, 1},
-    /* Gamma set, curve 1 */
-    {0x26, {0x01}, 1},
-    /* Positive gamma correction */
-    {0xE0, {0x1F, 0x1A, 0x18, 0x0A, 0x0F, 0x06, 0x45, 0X87, 0x32, 0x0A, 0x07, 0x02, 0x07, 0x05, 0x00}, 15},
-    /* Negative gamma correction */
-    {0XE1, {0x00, 0x25, 0x27, 0x05, 0x10, 0x09, 0x3A, 0x78, 0x4D, 0x05, 0x18, 0x0D, 0x38, 0x3A, 0x1F}, 15},
-    /* Column address set, SC=0, EC=0xEF */
-    {0x2A, {0x00, 0x00, 0x00, 0xEF}, 4},
-    /* Page address set, SP=0, EP=0x013F */
-    {0x2B, {0x00, 0x00, 0x01, 0x3f}, 4},
-    /* Memory write */
-    {0x2C, {0}, 0},
-    /* Entry mode set, Low vol detect disabled, normal display */
-    {0xB7, {0x07}, 1},
-    /* Display function control */
-    {0xB6, {0x0A, 0x82, 0x27, 0x00}, 4},
-    /* Sleep out */
-    {0x11, {0}, 0x80},
-    /* Display on */
-    {0x29, {0}, 0x80},
-    {0, {0}, 0xff},
-};
-#else
 
 //Place data into DRAM. Constant data gets placed into DROM by default, which is not accessible by DMA.
-DRAM_ATTR static const lcd_init_cmd_t st_init_cmds[]={
+DRAM_ATTR static const lcd_init_cmd_t st_init_cmds[]=
+{
     /* Memory Data Access Control, MX=MV=1, MY=ML=MH=0, RGB=0 */
     {0x36, {(1<<5)|(1<<6)}, 1},
     /* Interface Pixel Format, 16bits/pixel for RGB/MCU interface */
@@ -142,11 +78,14 @@ DRAM_ATTR static const lcd_init_cmd_t st_init_cmds[]={
     {0x29, {0}, 0x80},
     {0, {0}, 0xff}
 };
-#endif
 
 static spi_device_handle_t priv_spi_handle;
 
-/* Public function definitions */
+/********************************************************/
+/*** 		Public function definitions 			  ***/
+/********************************************************/
+
+/* Sends initial commands and sets up the display. Must be called before writing to the display.*/
 void display_init(void)
 {
     esp_err_t ret;
@@ -184,47 +123,43 @@ void display_init(void)
     //Display some test data.
     for (int y=0; y<240; y+=40u)
     {
-    	send_lines(priv_spi_handle, 0, y, 320, 40u, line_data);
-    	wait_line_finish(priv_spi_handle);
+    	send_display_data(priv_spi_handle, 0, y, 320, 40u, line_data, false);
+    	wait_display_data_finish(priv_spi_handle);
     }
 }
 
-void display_test_image(uint16_t *buf)
+void display_drawScreenBuffer(uint16_t *buf)
 {
-    wait_line_finish(priv_spi_handle);
-    send_lines(priv_spi_handle, 0, 0, 320, 240, buf);
+    wait_display_data_finish(priv_spi_handle);
+    send_display_data(priv_spi_handle, 0, 0, 320, 240, buf, false);
 }
 
 /* Lets try a blocking implementation here... */
 /* TODO : Fix this. */
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
-    uint16_t buf_height = MIN(height, 40u);
-	uint16_t *line_data = heap_caps_malloc(width*buf_height*sizeof(uint16_t), MALLOC_CAP_DMA);
-    uint16_t currLine = y;
-    //uint16_t end_line = (y + height) - 1u;
+	uint16_t buf_size = MIN(DISPLAY_MAX_TRANSFER_SIZE, height*width*sizeof(uint16_t));
+	uint16_t *line_data = heap_caps_malloc(buf_size, MALLOC_CAP_DMA);
 
     assert(line_data != NULL);
 
-    for (int x = 0; (x < width*40u);x++)
+    printf("Filling Rectangle Buffer\n");
+    for (int x = 0; x < (buf_size / 2);x++)
     {
     	line_data[x] = color;
     }
 
-    int remainingHeight = height;
+    printf("Preparing Rectangle DMA\n");
+	wait_display_data_finish(priv_spi_handle);
+	send_display_data(priv_spi_handle, x, y, width, height, line_data, true);
 
-    while (remainingHeight > 0)
-    {
-    	uint16_t chunkHeight = MIN(remainingHeight, 40);
-
-    	wait_line_finish(priv_spi_handle);
-    	send_lines(priv_spi_handle, x, currLine, width, chunkHeight, line_data);
-
-    	remainingHeight -=chunkHeight;
-    }
     heap_caps_free(line_data);
 }
-/******************** Private function definitions *********************/
+
+
+/********************************************************/
+/*** 		Private function definitions 			  ***/
+/********************************************************/
 
 //This function is called (in irq context!) just before a transmission starts. It will
 //set the D/C line to the value indicated in the user field.
@@ -254,11 +189,7 @@ static void lcd_init(spi_device_handle_t spi)
     gpio_set_level(PIN_NUM_RST, 1);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-#if 0
-    lcd_init_cmds = ili_init_cmds;
-#else
     lcd_init_cmds = st_init_cmds;
-#endif
 
     //Send all the commands
     while (lcd_init_cmds[cmd].databytes!=0xff)
@@ -326,7 +257,7 @@ static void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
 uint8_t priv_number_of_transfers = 0u;
 
 /* Updates the whole screen */
-static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata)
+static void send_display_data(spi_device_handle_t spi, int xPos, int yPos, int width, int height, uint16_t *linedata, bool isBufferConstant)
 {
     esp_err_t ret;
     int total_size_bytes = width * height * 2;
@@ -383,14 +314,18 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
     while(total_size_bytes > 0)
     {
     	curr_transfer_size = MIN(total_size_bytes, DISPLAY_MAX_TRANSFER_SIZE);
-    	trans[chunk_ix].tx_buffer=line_ptr;        			//finally send the line data
+    	trans[chunk_ix].tx_buffer = line_ptr;        			//finally send the line data
     	trans[chunk_ix].length=curr_transfer_size * 8;  	//Data length, in bits
     	trans[chunk_ix].flags = 0; 							//undo SPI_TRANS_USE_TXDATA flag
     	trans[chunk_ix].user =(void*)1;
 
     	chunk_ix++;
     	total_size_bytes -= curr_transfer_size;
-    	line_ptr += (curr_transfer_size / 2); //Not ideal... We have a U16 ptr, but transfer size is in bytes...
+
+    	if(!isBufferConstant)
+    	{
+    		line_ptr += (curr_transfer_size / 2); //Not ideal... We have a U16 ptr, but transfer size is in bytes...
+    	}
     }
 
     trans[chunk_ix - 1].flags = 0;
@@ -405,7 +340,7 @@ static void send_lines(spi_device_handle_t spi, int xPos, int yPos, int width, i
 }
 
 
-static void wait_line_finish(spi_device_handle_t spi)
+static void wait_display_data_finish(spi_device_handle_t spi)
 {
     spi_transaction_t *rtrans;
     esp_err_t ret;

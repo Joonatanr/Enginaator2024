@@ -105,7 +105,7 @@ void app_main(void)
 	ship_buf = heap_caps_malloc(60*60*sizeof(uint16_t), MALLOC_CAP_DMA);
 	sdCard_Read_bmp_file("/ship.bmp", ship_buf);
 
-	display_test_image(*priv_curr_frame_buffer);
+	display_drawScreenBuffer(*priv_curr_frame_buffer);
 
 	for(int x = 0; x < 60*60; x++)
 	{
@@ -115,18 +115,18 @@ void app_main(void)
 		}
 	}
 
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(0, 0, 60, 40, COLOR_RED);
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(40, 40, 60, 40, COLOR_GREEN);
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(80, 80, 60, 40, COLOR_BLUE);
 
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(120, 120, 60, 40, COLOR_CYAN);
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(160, 160, 60, 40, COLOR_YELLOW);
-	vTaskDelay(200 / portTICK_PERIOD_MS);
+	vTaskDelay(400 / portTICK_PERIOD_MS);
 	display_fillRectangle(200, 200, 60, 40, COLOR_MAGENTA);
 
 
@@ -255,7 +255,7 @@ static void updateFrameBuffer(void)
 
 static void flushFrameBuffer(void)
 {
-	display_test_image(*priv_curr_frame_buffer);
+	display_drawScreenBuffer(*priv_curr_frame_buffer);
 }
 
 
