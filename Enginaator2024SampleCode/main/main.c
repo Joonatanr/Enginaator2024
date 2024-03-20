@@ -97,6 +97,7 @@ void app_main(void)
 
 	/* Initialize the main display. */
 	display_init();
+	display_fillRectangle(0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, COLOR_BLUE);
 
 	vTaskDelay(1000 / portTICK_PERIOD_MS);
 
@@ -106,6 +107,8 @@ void app_main(void)
 	sdCard_Read_bmp_file("/ship.bmp", ship_buf);
 
 	display_drawScreenBuffer(*priv_curr_frame_buffer);
+	vTaskDelay(2000 / portTICK_PERIOD_MS);
+
 
 	for(int x = 0; x < 60*60; x++)
 	{

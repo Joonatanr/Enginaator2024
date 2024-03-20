@@ -80,6 +80,7 @@ DRAM_ATTR static const lcd_init_cmd_t st_init_cmds[]=
 };
 
 static spi_device_handle_t priv_spi_handle;
+static uint16_t *line_data;
 
 /********************************************************/
 /*** 		Public function definitions 			  ***/
@@ -109,51 +110,41 @@ void display_init(void)
 
     //Initialize the LCD
     lcd_init(priv_spi_handle);
-    printf("Transmitting test data... \n");
 
-    /* Create some test data for 16 lines. */
-    uint16_t *line_data = heap_caps_malloc(320*40u*sizeof(uint16_t), MALLOC_CAP_DMA);
-    assert(line_data != NULL);
-
-    for(int x = 0; (x < 320*40u);x++)
-    {
-    	line_data[x] = CONVERT_888RGB_TO_565RGB(0xFFu, 0xFFu, 0x00u);
-    }
-
-    //Display some test data.
-    for (int y=0; y<240; y+=40u)
-    {
-    	send_display_data(priv_spi_handle, 0, y, 320, 40u, line_data, false);
-    	wait_display_data_finish(priv_spi_handle);
-    }
+    /* This buffer is used by the fill Rectangle function. */
+    line_data = heap_caps_malloc(DISPLAY_MAX_TRANSFER_SIZE, MALLOC_CAP_DMA);
 }
 
 void display_drawScreenBuffer(uint16_t *buf)
 {
     wait_display_data_finish(priv_spi_handle);
-    send_display_data(priv_spi_handle, 0, 0, 320, 240, buf, false);
+    send_display_data(priv_spi_handle, 0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT, buf, false);
 }
 
-/* Lets try a blocking implementation here... */
-/* TODO : Fix this. */
+
+void display_drawBitmap(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t *bmp_buf)
+{
+    wait_display_data_finish(priv_spi_handle);
+    send_display_data(priv_spi_handle, x, y, width, height, bmp_buf, false);
+}
+
+/* TODO : Comment this. */
 void display_fillRectangle(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color)
 {
 	uint16_t buf_size = MIN(DISPLAY_MAX_TRANSFER_SIZE, height*width*sizeof(uint16_t));
-	uint16_t *line_data = heap_caps_malloc(buf_size, MALLOC_CAP_DMA);
+	//uint16_t *line_data = heap_caps_malloc(buf_size, MALLOC_CAP_DMA);
 
     assert(line_data != NULL);
 
-    printf("Filling Rectangle Buffer\n");
     for (int x = 0; x < (buf_size / 2);x++)
     {
     	line_data[x] = color;
     }
 
-    printf("Preparing Rectangle DMA\n");
 	wait_display_data_finish(priv_spi_handle);
 	send_display_data(priv_spi_handle, x, y, width, height, line_data, true);
 
-    heap_caps_free(line_data);
+    //heap_caps_free(line_data);
 }
 
 
@@ -272,8 +263,8 @@ static void send_display_data(spi_device_handle_t spi, int xPos, int yPos, int w
 	uint16_t end_column = (xPos + width) - 1u;
     uint16_t end_row = (yPos + height) - 1u;
 
-    end_column = MIN(end_column, 320);
-    end_row = MIN(end_row, 240);
+    end_column = MIN(end_column, DISPLAY_WIDTH);
+    end_row = MIN(end_row, DISPLAY_HEIGHT);
 
     //In theory, it's better to initialize trans and data only once and hang on to the initialized
     //variables. We allocate them on the stack, so we need to re-init them each call.
