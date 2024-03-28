@@ -43,6 +43,7 @@ static void flushFrameBuffer(void);
 
 static void drawBackGround(void);
 static void drawStar(uint16_t xPos, uint16_t yPos);
+static void drawBullet(uint16_t xPos, uint16_t yPos);
 
 void timer_callback_10msec(void *param);
 
@@ -54,9 +55,13 @@ static uint16_t timer_counter = 0u;
 static const char *TAG = "Main Program";
 
 static int yLocation = 0;
-static int ship_y = 50;
-static int ship_x = 10;
-const static int ship_speed = 2u;
+static int ship_y = 90;
+static int ship_x = 240;
+
+static int bullet_x = 320;
+static int bullet_y = 240;
+
+const static int ship_speed = 3u;
 
 static bool direction = true;
 static int speed = 4;
@@ -209,6 +214,14 @@ static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_
 {
 	uint16_t * data_ptr = data_buf;
 
+	int stride = 0;
+	int right_column = yPos + height;
+
+	if (right_column > DISPLAY_HEIGHT)
+	{
+		stride += (right_column - DISPLAY_HEIGHT);
+	}
+
 	for (int x = xPos; ((x < (xPos+width)) && (x < 320)); x++)
 	{
 		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
@@ -217,6 +230,7 @@ static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_
 			SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, x, y, *data_ptr);
 			data_ptr++;
 		}
+		data_ptr += stride;
 	}
 }
 
@@ -276,12 +290,20 @@ static void updateDisplayedElements()
 			ship_y+= ship_speed;
 		}
 	}
-#if 0
-	if(gpio_get_level(BUTTON_TRIGGER) == 1)
+
+	if (gpio_get_level(BUTTON_TRIGGER) == 0)
 	{
-		/* TODO */
+		if (bullet_x <= 0)
+		{
+			bullet_x = ship_x;
+			bullet_y = ship_y + 25;
+		}
 	}
-#endif
+
+	if(bullet_x > 0)
+	{
+		bullet_x -= 6u;
+	}
 }
 
 
@@ -293,8 +315,10 @@ static void updateFrameBuffer(void)
 	/* Draw Elements */
 	drawBmpInFrameBuf(ship_x, ship_y, 40, 53, ship_buf);
 
-	drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
-	drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
+	drawBullet(bullet_x, bullet_y);
+
+	drawRectangleInFrameBuf(10,  240 - yLocation - 40, 20, 20, COLOR_GREEN);
+	drawRectangleInFrameBuf(210, 240 - yLocation - 40, 20, 20, COLOR_MAGENTA);
 }
 
 
@@ -355,6 +379,24 @@ static void drawStar(uint16_t xPos, uint16_t yPos)
 		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos,	 	0xffffu);
 		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos + 1, 	0xffffu);
 		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos + 1, 	0xffffu);
+	}
+}
+
+static void drawBullet(uint16_t xPos, uint16_t yPos)
+{
+	if (xPos < (DISPLAY_WIDTH - 1) && (yPos < (DISPLAY_HEIGHT - 1)) && (xPos > 0) &&(yPos > 0))
+	{
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos, 		COLOR_YELLOW);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos,	 	COLOR_RED);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos + 1, 	COLOR_RED);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos + 1, 	COLOR_RED);
+
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos - 1, 	yPos,	 	COLOR_RED);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos, 		yPos - 1, 	COLOR_RED);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos - 1, 	yPos - 1, 	COLOR_RED);
+
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos - 1, 	yPos + 1,	COLOR_RED);
+		SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, xPos + 1, 	yPos - 1, 	COLOR_RED);
 	}
 }
 
