@@ -12,22 +12,20 @@
 
 /* Private defines */
 
-#define BLINK_GPIO 38u
 #define CONFIG_BLINK_PERIOD 10u
 #define BACKGROUND_COLOR COLOR_BLACK
 
+#define BUTTON_DOWN 	39u
+#define BUTTON_UP 		38u
+#define BUTTON_RIGHT 	47u
+#define BUTTON_LEFT 	41u
 
-#if 0
-#define PIN_NUM_MISO  19
-#define PIN_NUM_MOSI  23
-#define PIN_NUM_CLK   18
-#define PIN_NUM_CS    4
-#else
+#define BUTTON_TRIGGER 	40u
+
 /* For the S3 board: */
 #define PIN_NUM_CLK   12
 #define PIN_NUM_MOSI  11
 #define PIN_NUM_MISO  13
-#endif
 
 /* Private type definitions */
 
@@ -48,12 +46,18 @@ static void drawStar(uint16_t xPos, uint16_t yPos);
 
 void timer_callback_10msec(void *param);
 
+static void init_buttons(void);
+
 /* Private variables */
 volatile bool timer_flag = false;
 static uint16_t timer_counter = 0u;
 static const char *TAG = "Main Program";
 
 static int yLocation = 0;
+static int ship_y = 50;
+static int ship_x = 10;
+const static int ship_speed = 2u;
+
 static bool direction = true;
 static int speed = 4;
 
@@ -88,6 +92,8 @@ void app_main(void)
     priv_curr_frame_buffer = &priv_frame_buffer1;
 
 	configure_led();
+
+	init_buttons();
 
 	configure_timer();
 
@@ -179,9 +185,9 @@ void app_main(void)
 	while(1)
 	{
 		vTaskDelay(500u / portTICK_PERIOD_MS);
-		gpio_set_level(BLINK_GPIO, 1);
+		//gpio_set_level(BLINK_GPIO, 1);
 		vTaskDelay(500u / portTICK_PERIOD_MS);
-		gpio_set_level(BLINK_GPIO, 0);
+		//gpio_set_level(BLINK_GPIO, 0);
 	}
 }
 
@@ -240,6 +246,42 @@ static void updateDisplayedElements()
 			yLocation-= speed;
 		}
 	}
+
+	if (gpio_get_level(BUTTON_UP) == 0)
+	{
+		if(ship_x > 0)
+		{
+			ship_x -= ship_speed;
+		}
+	}
+	else if(gpio_get_level(BUTTON_DOWN) == 0)
+	{
+		if(ship_x < DISPLAY_WIDTH)
+		{
+			ship_x += ship_speed;
+		}
+	}
+
+	else if(gpio_get_level(BUTTON_RIGHT) == 0)
+	{
+		if(ship_y > 0)
+		{
+			ship_y-= ship_speed;
+		}
+	}
+	else if(gpio_get_level(BUTTON_LEFT) == 0)
+	{
+		if(ship_y < DISPLAY_HEIGHT)
+		{
+			ship_y+= ship_speed;
+		}
+	}
+#if 0
+	if(gpio_get_level(BUTTON_TRIGGER) == 1)
+	{
+		/* TODO */
+	}
+#endif
 }
 
 
@@ -249,7 +291,7 @@ static void updateFrameBuffer(void)
 	drawBackGround();
 
 	/* Draw Elements */
-	drawBmpInFrameBuf(260, yLocation, 40, 53, ship_buf);
+	drawBmpInFrameBuf(ship_x, ship_y, 40, 53, ship_buf);
 
 	drawRectangleInFrameBuf(10,  240 - yLocation - 40, 40, 40, COLOR_GREEN);
 	drawRectangleInFrameBuf(210, 240 - yLocation - 40, 40, 40, COLOR_MAGENTA);
@@ -321,9 +363,9 @@ static void drawStar(uint16_t xPos, uint16_t yPos)
 static void configure_led(void)
 {
 	printf("Configuring LED...\n");
-    gpio_reset_pin(BLINK_GPIO);
+    //gpio_reset_pin(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
-    gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
+    //gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
 }
 
 static void configure_timer(void)
@@ -383,6 +425,18 @@ void timer_callback_10msec(void *param)
 		timer_counter = 0u;
 		timer_flag = true;
 	}
+}
+
+
+
+
+static void init_buttons(void)
+{
+    gpio_set_direction(BUTTON_UP, GPIO_MODE_INPUT);
+    gpio_set_direction(BUTTON_DOWN, GPIO_MODE_INPUT);
+    gpio_set_direction(BUTTON_RIGHT, GPIO_MODE_INPUT);
+    gpio_set_direction(BUTTON_TRIGGER, GPIO_MODE_INPUT);
+    gpio_set_direction(BUTTON_LEFT, GPIO_MODE_INPUT);
 }
 
 
