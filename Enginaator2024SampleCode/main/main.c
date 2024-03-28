@@ -214,23 +214,16 @@ static void drawBmpInFrameBuf(int xPos, int yPos, int width, int height, uint16_
 {
 	uint16_t * data_ptr = data_buf;
 
-	int stride = 0;
-	int right_column = yPos + height;
-
-	if (right_column > DISPLAY_HEIGHT)
+	for (int x = xPos; (x < (xPos + width)); x++)
 	{
-		stride += (right_column - DISPLAY_HEIGHT);
-	}
-
-	for (int x = xPos; ((x < (xPos+width)) && (x < 320)); x++)
-	{
-		for (int y = yPos; ((y < (yPos+height)) && (y < 240)); y++)
+		for (int y = yPos; (y < (yPos + height)); y++)
 		{
-			//priv_frame_buffer[y][x] = *data_ptr;
-			SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, x, y, *data_ptr);
+			if ((x >= 0) && (x < DISPLAY_WIDTH) && (y >= 0) && (y < DISPLAY_HEIGHT))
+			{
+				SET_FRAME_BUF_PIXEL(*priv_curr_frame_buffer, x, y, *data_ptr);
+			}
 			data_ptr++;
 		}
-		data_ptr += stride;
 	}
 }
 
@@ -368,7 +361,6 @@ static void drawBackGround(void)
 
 		drawStar(stars[x].xPos, stars[x].yPos);
 	}
-
 }
 
 static void drawStar(uint16_t xPos, uint16_t yPos)
